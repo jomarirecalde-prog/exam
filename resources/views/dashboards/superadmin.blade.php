@@ -1,0 +1,9 @@
+<x-app-layout>
+    <div class="ui-page">
+        <x-ui.page-header :title="$greeting" :subtitle="$institution.' · Manage the full examination platform.'">
+            <x-ui.button :href="route('examinations.create')" icon="plus">Create Examination</x-ui.button>
+        </x-ui.page-header>
+
+        @include('dashboards.partials.staff-overview')
+    </div>
+</x-app-layout>

@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreProgramRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()?->hasAnyRole(['superadmin', 'admin']) ?? false;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'code' => ['required', 'string', 'max:20', 'unique:programs,code'],
+            'name' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'department_id' => ['required', 'exists:departments,id'],
+            'is_active' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'is_active' => $this->input('is_active') === '1' || $this->boolean('is_active'),
+            'code' => strtoupper(trim((string) $this->input('code'))),
+            'description' => filled($this->input('description')) ? $this->input('description') : null,
+        ]);
+    }
+}
