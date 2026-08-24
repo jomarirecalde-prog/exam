@@ -133,7 +133,7 @@ class Navigation
         }
 
         $groups[] = [
-            'label' => 'Examinations',
+            'label' => $user->hasAnyRole(['superadmin', 'admin']) ? null : 'Examinations',
             'items' => array_values(array_filter([
                 ['label' => 'All Examinations', 'route' => 'examinations.index', 'icon' => 'clipboard-list'],
                 $user->hasAnyRole(['superadmin', 'admin', 'instructor'])
