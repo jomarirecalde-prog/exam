@@ -880,3 +880,233 @@ window.examTaking = function examTaking(config) {
 };
 
 window.toast = (message, type = 'success') => window.appToast(message, type);
+
+window.studentRegistrationWizard = function studentRegistrationWizard(config = {}) {
+    const old = config.old || {};
+    const serverErrors = config.errors || {};
+
+    return {
+        step: 1,
+        submitting: false,
+        showPassword: false,
+        showConfirmPassword: false,
+        departments: config.departments || [],
+        programs: [],
+        yearLevels: [],
+        sections: [],
+        programsLoading: false,
+        yearLevelsLoading: false,
+        sectionsLoading: false,
+        errors: Object.fromEntries(
+            Object.entries(serverErrors).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])
+        ),
+        steps: [
+            { id: 1, label: 'Personal' },
+            { id: 2, label: 'Academic' },
+            { id: 3, label: 'Account' },
+        ],
+        form: {
+            first_name: old.first_name || '',
+            middle_name: old.middle_name || '',
+            last_name: old.last_name || '',
+            suffix: old.suffix || '',
+            sex: old.sex || '',
+            date_of_birth: old.date_of_birth || '',
+            phone: old.phone || '',
+            email: old.email || '',
+            home_address: old.home_address || '',
+            student_id: old.student_id || '',
+            department_id: old.department_id ? String(old.department_id) : '',
+            program_id: old.program_id ? String(old.program_id) : '',
+            year_level_id: old.year_level_id ? String(old.year_level_id) : '',
+            section_id: old.section_id ? String(old.section_id) : '',
+            password: '',
+            password_confirmation: '',
+        },
+        programsUrl: config.programsUrl || '',
+        yearLevelsUrl: config.yearLevelsUrl || '',
+        sectionsUrl: config.sectionsUrl || '',
+        today: new Date().toISOString().slice(0, 10),
+        init() {
+            if (Object.keys(serverErrors).length > 0) {
+                this.step = this.inferStepFromErrors();
+            }
+
+            if (this.form.department_id) {
+                this.fetchPrograms(false).then(() => {
+                    if (this.form.program_id) {
+                        this.fetchYearLevels(false).then(() => {
+                            if (this.form.year_level_id) {
+                                this.fetchSections();
+                            }
+                        });
+                    }
+                });
+            }
+        },
+        inferStepFromErrors() {
+            const academic = ['student_id', 'department_id', 'program_id', 'year_level_id', 'section_id'];
+            const account = ['password', 'password_confirmation'];
+
+            if (account.some((field) => serverErrors[field])) {
+                return 3;
+            }
+            if (academic.some((field) => serverErrors[field])) {
+                return 2;
+            }
+            return 1;
+        },
+        stepStatus(id) {
+            if (id < this.step) {
+                return 'complete';
+            }
+            return id === this.step ? 'current' : 'upcoming';
+        },
+        get passwordStrengthScore() {
+            const password = this.form.password || '';
+            let score = 0;
+            if (password.length >= 8) score += 1;
+            if (/[A-Z]/.test(password)) score += 1;
+            if (/[0-9]/.test(password)) score += 1;
+            if (/[^A-Za-z0-9]/.test(password)) score += 1;
+            return score;
+        },
+        get passwordStrengthPercent() {
+            return (this.passwordStrengthScore / 4) * 100;
+        },
+        get passwordStrengthClass() {
+            const score = this.passwordStrengthScore;
+            if (score <= 1) return 'bg-danger-ink';
+            if (score === 2) return 'bg-warning-ink';
+            if (score === 3) return 'bg-info-ink';
+            return 'bg-success-ink';
+        },
+        get passwordStrengthLabel() {
+            const password = this.form.password || '';
+            if (!password) return 'Use at least 8 characters with letters and numbers.';
+            const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+            return labels[Math.max(0, this.passwordStrengthScore - 1)] || 'Weak';
+        },
+        validateStep1() {
+            this.errors = {};
+            if (!this.form.first_name.trim()) this.errors.first_name = 'First name is required.';
+            if (!this.form.last_name.trim()) this.errors.last_name = 'Last name is required.';
+            if (!this.form.phone.trim()) this.errors.phone = 'Contact number is required.';
+            if (!this.form.email.trim()) this.errors.email = 'Email address is required.';
+            return Object.keys(this.errors).length === 0;
+        },
+        validateStep2() {
+            this.errors = {};
+            if (!this.form.student_id.trim()) this.errors.student_id = 'Student ID is required.';
+            if (!this.form.department_id) this.errors.department_id = 'Please select a department.';
+            if (!this.form.program_id) this.errors.program_id = 'Please select a program.';
+            if (!this.form.year_level_id) this.errors.year_level_id = 'Please select a year level.';
+            if (!this.form.section_id) this.errors.section_id = 'Please select a section.';
+            return Object.keys(this.errors).length === 0;
+        },
+        validateStep3() {
+            this.errors = {};
+            if (!this.form.password) this.errors.password = 'Password is required.';
+            if (this.form.password !== this.form.password_confirmation) {
+                this.errors.password_confirmation = 'Password confirmation does not match.';
+            }
+            return Object.keys(this.errors).length === 0;
+        },
+        next() {
+            if (this.step === 1 && !this.validateStep1()) return;
+            if (this.step === 2 && !this.validateStep2()) return;
+            this.step = Math.min(3, this.step + 1);
+        },
+        back() {
+            this.errors = {};
+            this.step = Math.max(1, this.step - 1);
+        },
+        submit(event) {
+            if (!this.validateStep3()) {
+                event.preventDefault();
+                this.step = 3;
+                return;
+            }
+            this.submitting = true;
+        },
+        async onDepartmentChange() {
+            this.form.program_id = '';
+            this.form.year_level_id = '';
+            this.form.section_id = '';
+            this.programs = [];
+            this.yearLevels = [];
+            this.sections = [];
+            await this.fetchPrograms();
+        },
+        async onProgramChange() {
+            this.form.year_level_id = '';
+            this.form.section_id = '';
+            this.yearLevels = [];
+            this.sections = [];
+            await this.fetchYearLevels();
+        },
+        async onYearLevelChange() {
+            this.form.section_id = '';
+            this.sections = [];
+            await this.fetchSections();
+        },
+        async fetchPrograms(reset = true) {
+            if (!this.form.department_id) return;
+            this.programsLoading = true;
+            try {
+                const response = await fetch(`${this.programsUrl}?department_id=${this.form.department_id}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                this.programs = data.programs || [];
+                if (reset && !this.programs.some((item) => String(item.id) === String(this.form.program_id))) {
+                    this.form.program_id = '';
+                }
+            } catch (error) {
+                this.programs = [];
+            } finally {
+                this.programsLoading = false;
+            }
+        },
+        async fetchYearLevels(reset = true) {
+            if (!this.form.program_id) return;
+            this.yearLevelsLoading = true;
+            try {
+                const response = await fetch(`${this.yearLevelsUrl}?program_id=${this.form.program_id}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                this.yearLevels = data.year_levels || [];
+                if (reset && !this.yearLevels.some((item) => String(item.id) === String(this.form.year_level_id))) {
+                    this.form.year_level_id = '';
+                }
+            } catch (error) {
+                this.yearLevels = [];
+            } finally {
+                this.yearLevelsLoading = false;
+            }
+        },
+        async fetchSections() {
+            if (!this.form.program_id || !this.form.year_level_id) return;
+            this.sectionsLoading = true;
+            try {
+                const params = new URLSearchParams({
+                    program_id: this.form.program_id,
+                    year_level_id: this.form.year_level_id,
+                });
+                const response = await fetch(`${this.sectionsUrl}?${params.toString()}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                this.sections = data.sections || [];
+                if (!this.sections.some((item) => String(item.id) === String(this.form.section_id))) {
+                    this.form.section_id = '';
+                }
+            } catch (error) {
+                this.sections = [];
+            } finally {
+                this.sectionsLoading = false;
+            }
+        },
+    };
+};

@@ -14,6 +14,8 @@
         'passed' => ['label' => 'Passed', 'class' => 'bg-success-soft text-success-ink'],
         'failed' => ['label' => 'Failed', 'class' => 'bg-danger-soft text-danger-ink'],
         'pending' => ['label' => 'Pending', 'class' => 'bg-warning-soft text-warning-ink'],
+        'rejected' => ['label' => 'Rejected', 'class' => 'bg-danger-soft text-danger-ink'],
+        'approved' => ['label' => 'Approved', 'class' => 'bg-success-soft text-success-ink'],
         'pending_grading' => ['label' => 'Pending', 'class' => 'bg-warning-soft text-warning-ink'],
         'for_review' => ['label' => 'Pending', 'class' => 'bg-warning-soft text-warning-ink'],
         'synced' => ['label' => 'Synced', 'class' => 'bg-success-soft text-success-ink'],

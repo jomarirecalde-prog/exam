@@ -26,6 +26,7 @@
                     @auth
                         <x-ui.button href="{{ route('dashboard') }}">Dashboard</x-ui.button>
                     @else
+                        <x-ui.button href="{{ route('student-registration.create') }}" variant="secondary">Register</x-ui.button>
                         <x-ui.button href="{{ route('login') }}">Sign In</x-ui.button>
                     @endauth
                 </nav>
@@ -42,6 +43,27 @@
                 <div class="mt-8 flex flex-wrap gap-3">
                     <x-ui.button href="{{ route('login') }}">Sign In</x-ui.button>
                     <x-ui.button href="#features" variant="secondary">Learn More</x-ui.button>
+                </div>
+            </section>
+
+            <section class="border-y border-line bg-surface">
+                <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+                    <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="max-w-xl">
+                            <h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Are you a student?</h2>
+                            <p class="mt-3 text-sm leading-7 text-muted sm:text-base">
+                                Create your student account to access examinations, announcements, grades, and other available services.
+                            </p>
+                            <p class="mt-4 text-sm text-muted">
+                                Already registered?
+                                <a href="{{ route('login') }}" class="font-medium text-ink underline-offset-4 hover:underline">Sign in</a>
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            <x-ui.button href="{{ route('student-registration.create') }}">Register as Student</x-ui.button>
+                            <x-ui.button href="{{ route('login') }}" variant="secondary">Sign In</x-ui.button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

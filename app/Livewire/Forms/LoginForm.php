@@ -50,7 +50,7 @@ class LoginForm extends Form
 
         if (! $user->is_active) {
             throw ValidationException::withMessages([
-                'form.email' => 'Your account has been deactivated.',
+                'form.email' => $this->inactiveAccountMessage($user),
             ]);
         }
 
@@ -134,5 +134,22 @@ class LoginForm extends Form
     protected function throttleKey(): string
     {
         return Str::transliterate(Str::lower($this->email).'|'.request()->ip());
+    }
+
+    protected function inactiveAccountMessage(User $user): string
+    {
+        $student = $user->student;
+
+        if ($student?->isRegistrationPending()) {
+            return 'Your registration has been submitted successfully and is awaiting administrator approval.';
+        }
+
+        if ($student?->isRegistrationRejected()) {
+            return filled($student->rejection_reason)
+                ? $student->rejection_reason
+                : 'Your registration requires additional information. Please contact the administrator.';
+        }
+
+        return 'Your account has been deactivated.';
     }
 }

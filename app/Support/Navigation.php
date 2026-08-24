@@ -44,6 +44,8 @@ class Navigation
             'dashboard' => [['Dashboard']],
             'profile' => [['Dashboard', 'dashboard'], ['Profile']],
             'students.index' => [['Academic'], ['Students']],
+            'admin.student-registrations.index' => [['Academic'], ['Student Registrations']],
+            'admin.student-registrations.show' => [['Academic'], ['Student Registrations', 'admin.student-registrations.index'], ['Details']],
             'instructors.index' => [['Academic'], ['Instructors']],
             'instructors.create' => [['Academic'], ['Instructors', 'instructors.index'], ['Add Instructor']],
             'instructors.show' => [['Academic'], ['Instructors', 'instructors.index'], ['Profile']],
@@ -113,6 +115,7 @@ class Navigation
                 'label' => 'Academic',
                 'items' => [
                     ['label' => 'Students', 'route' => 'students.index', 'icon' => 'graduation-cap'],
+                    ['label' => 'Student Registrations', 'route' => 'admin.student-registrations.index', 'icon' => 'user-plus'],
                     ['label' => 'Instructors', 'route' => 'instructors.index', 'icon' => 'users'],
                     ['label' => 'Departments', 'route' => 'departments.index', 'icon' => 'building-2'],
                     ['label' => 'Programs', 'route' => 'programs.index', 'icon' => 'library'],

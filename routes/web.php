@@ -1,16 +1,43 @@
 <?php
 
+use App\Http\Controllers\AdminStudentRegistrationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlatformController;
+use App\Http\Controllers\StudentRegistrationController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
+
+Route::middleware('guest')->group(function () {
+    Route::get('/register/student', [StudentRegistrationController::class, 'create'])->name('student-registration.create');
+    Route::post('/register/student', [StudentRegistrationController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('student-registration.store');
+    Route::get('/register/student/confirmation/{student}', [StudentRegistrationController::class, 'confirmation'])
+        ->name('student-registration.confirmation');
+
+    Route::get('/register/student/lookup/programs', [StudentRegistrationController::class, 'programs'])
+        ->name('student-registration.programs');
+    Route::get('/register/student/lookup/year-levels', [StudentRegistrationController::class, 'yearLevels'])
+        ->name('student-registration.year-levels');
+    Route::get('/register/student/lookup/sections', [StudentRegistrationController::class, 'sections'])
+        ->name('student-registration.sections');
+});
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('/students', [PlatformController::class, 'students'])->name('students.index');
     Route::middleware('role:superadmin,admin')->group(function () {
+        Route::get('/admin/student-registrations', [AdminStudentRegistrationController::class, 'index'])
+            ->name('admin.student-registrations.index');
+        Route::get('/admin/student-registrations/{student}', [AdminStudentRegistrationController::class, 'show'])
+            ->name('admin.student-registrations.show');
+        Route::post('/admin/student-registrations/{student}/approve', [AdminStudentRegistrationController::class, 'approve'])
+            ->name('admin.student-registrations.approve');
+        Route::post('/admin/student-registrations/{student}/reject', [AdminStudentRegistrationController::class, 'reject'])
+            ->name('admin.student-registrations.reject');
+
         Route::resource('instructors', \App\Http\Controllers\InstructorController::class);
         Route::resource('departments', \App\Http\Controllers\DepartmentController::class);
         Route::resource('sections', \App\Http\Controllers\SectionController::class);

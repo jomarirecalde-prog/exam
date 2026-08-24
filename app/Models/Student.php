@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StudentRegistrationStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Model;
@@ -10,12 +11,32 @@ use Illuminate\Support\Facades\DB;
 class Student extends Model
 {
     protected $fillable = [
-        'user_id', 'student_id', 'program_id', 'year_level_id', 'section_id', 'is_active',
+        'user_id',
+        'student_id',
+        'phone',
+        'sex',
+        'date_of_birth',
+        'home_address',
+        'program_id',
+        'year_level_id',
+        'section_id',
+        'is_active',
+        'registration_status',
+        'registered_at',
+        'approved_at',
+        'approved_by',
+        'rejection_reason',
     ];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'date_of_birth' => 'date',
+            'registered_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'registration_status' => StudentRegistrationStatus::class,
+        ];
     }
 
     public function user(): BelongsTo
@@ -38,11 +59,31 @@ class Student extends Model
         return $this->belongsTo(YearLevel::class);
     }
 
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     public function sections(): BelongsToMany
     {
         return $this->belongsToMany(Section::class, 'student_sections')
             ->withPivot(['academic_year_id', 'semester_id'])
             ->withTimestamps();
+    }
+
+    public function isRegistrationPending(): bool
+    {
+        return $this->registration_status === StudentRegistrationStatus::Pending;
+    }
+
+    public function isRegistrationApproved(): bool
+    {
+        return $this->registration_status === StudentRegistrationStatus::Approved;
+    }
+
+    public function isRegistrationRejected(): bool
+    {
+        return $this->registration_status === StudentRegistrationStatus::Rejected;
     }
 
     public function accessibleSectionIds(?int $academicYearId = null, ?int $semesterId = null): array

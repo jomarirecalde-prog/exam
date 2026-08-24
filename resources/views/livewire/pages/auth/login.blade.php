@@ -48,5 +48,12 @@ new #[Layout('layouts.guest')] class extends Component
                 <a class="text-sm font-medium text-ink underline-offset-4 hover:underline" href="{{ route('password.request') }}" wire:navigate>Forgot Password</a>
             </p>
         @endif
+
+        @if (Route::has('student-registration.create'))
+            <p class="text-center text-sm text-muted">
+                Don't have an account?
+                <a class="font-medium text-ink underline-offset-4 hover:underline" href="{{ route('student-registration.create') }}" wire:navigate>Register as Student</a>
+            </p>
+        @endif
     </form>
 </div>
