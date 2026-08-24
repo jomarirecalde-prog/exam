@@ -94,7 +94,7 @@
                                     <td class="text-muted">{{ $registration->user?->email }}</td>
                                     <td class="text-muted">{{ $registration->registered_at?->format('M j, Y') ?: '—' }}</td>
                                     <td>
-                                        <x-ui.badge :status="$registration->registration_status->value" />
+                                        <x-ui.badge :status="$registration->registration_status?->value ?? 'pending'" />
                                     </td>
                                     <td>
                                         <a href="{{ route('admin.student-registrations.show', $registration) }}" class="btn-ghost btn-sm" wire:navigate>View</a>

@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -114,5 +117,39 @@ class AppServiceProvider extends ServiceProvider
         ]);
 
         app()->useStoragePath($tmpStorage);
+
+        $this->runPendingMigrations($tmpStorage);
+    }
+
+    protected function runPendingMigrations(string $tmpStorage): void
+    {
+        $stampFile = $tmpStorage.'/migrated.stamp';
+
+        if (is_file($stampFile)) {
+            return;
+        }
+
+        $lockFile = $tmpStorage.'/migrate.lock';
+        $lock = fopen($lockFile, 'c+');
+
+        if ($lock === false || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            return;
+        }
+
+        try {
+            if (is_file($stampFile)) {
+                return;
+            }
+
+            Artisan::call('migrate', ['--force' => true]);
+            file_put_contents($stampFile, (string) time());
+        } catch (Throwable $exception) {
+            Log::error('Automatic Vercel migration failed.', [
+                'error' => $exception->getMessage(),
+            ]);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 }

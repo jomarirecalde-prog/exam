@@ -82,7 +82,7 @@ class StudentRegistrationService
 
     public function approve(Student $student, User $admin): Student
     {
-        return DB::transaction(function () use ($student, $admin) {
+        $student = DB::transaction(function () use ($student, $admin) {
             $student->update([
                 'registration_status' => StudentRegistrationStatus::Approved,
                 'is_active' => true,
@@ -96,10 +96,12 @@ class StudentRegistrationService
                 'email_verified_at' => $student->user->email_verified_at ?? now(),
             ]);
 
-            $student->user?->notify(new StudentRegistrationApprovedNotification($student));
-
             return $student->fresh(['user', 'program.department', 'yearLevel', 'section']);
         });
+
+        $this->notifyStudentOfApproval($student);
+
+        return $student;
     }
 
     public function reject(Student $student, User $admin, ?string $reason = null): Student
@@ -159,6 +161,18 @@ class StudentRegistrationService
                 ->each(fn (User $admin) => $admin->notify(new NewStudentRegistrationNotification($student)));
         } catch (Throwable $exception) {
             Log::warning('Unable to notify administrators about student registration.', [
+                'student_id' => $student->student_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    protected function notifyStudentOfApproval(Student $student): void
+    {
+        try {
+            $student->user?->notify(new StudentRegistrationApprovedNotification($student));
+        } catch (Throwable $exception) {
+            Log::warning('Unable to notify student about registration approval.', [
                 'student_id' => $student->student_id,
                 'error' => $exception->getMessage(),
             ]);

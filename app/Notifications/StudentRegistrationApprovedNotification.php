@@ -21,7 +21,9 @@ class StudentRegistrationApprovedNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        return getenv('VERCEL') === '1'
+            ? ['database']
+            : ['database', 'mail'];
     }
 
     public function toMail(object $notifiable): MailMessage
