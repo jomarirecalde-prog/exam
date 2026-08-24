@@ -108,6 +108,9 @@ class AppServiceProvider extends ServiceProvider
             'logging.default' => 'stderr',
             'logging.channels.stack.channels' => ['stderr'],
             'filesystems.disks.local.root' => $tmpStorage,
+            'session.lifetime' => max(1, (int) config('session.lifetime', 120)),
+            'session.secure' => true,
+            'session.same_site' => 'lax',
         ]);
 
         app()->useStoragePath($tmpStorage);
