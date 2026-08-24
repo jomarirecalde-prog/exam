@@ -81,23 +81,27 @@ class AcademicLookupService
      */
     public function sectionsForProgramAndYearLevel(int $programId, int $yearLevelId): Collection
     {
-        $academicYear = $this->currentAcademicYear();
-        $semester = $this->currentSemester($academicYear);
-
-        $query = Section::query()
+        $baseQuery = Section::query()
             ->where('program_id', $programId)
             ->where('year_level_id', $yearLevelId)
             ->where('is_active', true);
 
-        if ($academicYear) {
-            $query->where('academic_year_id', $academicYear->id);
+        $academicYear = $this->currentAcademicYear();
+        $semester = $this->currentSemester($academicYear);
+
+        if ($academicYear && $semester) {
+            $filtered = (clone $baseQuery)
+                ->where('academic_year_id', $academicYear->id)
+                ->where('semester_id', $semester->id)
+                ->orderBy('name')
+                ->get(['id', 'program_id', 'year_level_id', 'name', 'code']);
+
+            if ($filtered->isNotEmpty()) {
+                return $filtered;
+            }
         }
 
-        if ($semester) {
-            $query->where('semester_id', $semester->id);
-        }
-
-        return $query->orderBy('name')->get(['id', 'program_id', 'year_level_id', 'name', 'code']);
+        return $baseQuery->orderBy('name')->get(['id', 'program_id', 'year_level_id', 'name', 'code']);
     }
 
     public function sectionBelongsToProgramAndYearLevel(int $sectionId, int $programId, int $yearLevelId): bool

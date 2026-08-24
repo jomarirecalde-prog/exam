@@ -9,7 +9,10 @@ use App\Models\User;
 use App\Notifications\NewStudentRegistrationNotification;
 use App\Notifications\StudentRegistrationApprovedNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
+use Throwable;
 
 class StudentRegistrationService
 {
@@ -30,7 +33,7 @@ class StudentRegistrationService
             (int) $data['section_id'],
         );
 
-        return DB::transaction(function () use ($data) {
+        $student = DB::transaction(function () use ($data) {
             $firstName = trim($data['first_name']);
             $lastName = trim($data['last_name']);
             $middleName = filled($data['middle_name'] ?? null) ? trim($data['middle_name']) : null;
@@ -49,6 +52,7 @@ class StudentRegistrationService
                 'is_active' => false,
             ]);
 
+            Role::findOrCreate(UserRole::Student->value);
             $user->assignRole(UserRole::Student->value);
 
             $student = Student::create([
@@ -68,10 +72,12 @@ class StudentRegistrationService
 
             $this->syncSectionEnrollment($student);
 
-            $this->notifyAdministrators($student);
-
             return $student->load(['user', 'program.department', 'yearLevel', 'section']);
         });
+
+        $this->notifyAdministrators($student);
+
+        return $student;
     }
 
     public function approve(Student $student, User $admin): Student
@@ -146,10 +152,17 @@ class StudentRegistrationService
 
     protected function notifyAdministrators(Student $student): void
     {
-        User::role([UserRole::Superadmin->value, UserRole::Admin->value])
-            ->where('is_active', true)
-            ->get()
-            ->each(fn (User $admin) => $admin->notify(new NewStudentRegistrationNotification($student)));
+        try {
+            User::role([UserRole::Superadmin->value, UserRole::Admin->value])
+                ->where('is_active', true)
+                ->get()
+                ->each(fn (User $admin) => $admin->notify(new NewStudentRegistrationNotification($student)));
+        } catch (Throwable $exception) {
+            Log::warning('Unable to notify administrators about student registration.', [
+                'student_id' => $student->student_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     protected function uniqueUsername(string $studentId, string $email): string

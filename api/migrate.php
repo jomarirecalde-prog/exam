@@ -29,7 +29,16 @@ try {
 
     echo 'Laravel booted'.PHP_EOL;
 
-    $kernel->call('migrate:fresh', ['--force' => true, '--seed' => true]);
+    $fresh = filter_var($_GET['fresh'] ?? false, FILTER_VALIDATE_BOOL);
+
+    if ($fresh) {
+        echo 'Running migrate:fresh --seed'.PHP_EOL;
+        $kernel->call('migrate:fresh', ['--force' => true, '--seed' => true]);
+    } else {
+        echo 'Running migrate --force'.PHP_EOL;
+        $kernel->call('migrate', ['--force' => true]);
+    }
+
     echo $kernel->output();
 
     echo 'Done.'.PHP_EOL;
