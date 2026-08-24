@@ -35,6 +35,10 @@
             "dest": "/public/build/$1"
         },
         {
+            "src": "/livewire/(.*)",
+            "dest": "/api/index.php"
+        },
+        {
             "src": "/(.*\\.(css|js|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|webp|map))",
             "dest": "/public/$1"
         },

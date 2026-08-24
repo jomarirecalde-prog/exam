@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "vercel-build": "rm -rf public/build && vite build"
+        "vercel-build": "rm -rf public/build && vite build && php artisan livewire:publish --assets --force"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",

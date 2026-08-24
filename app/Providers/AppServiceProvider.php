@@ -45,8 +45,11 @@ class AppServiceProvider extends ServiceProvider
     protected function configureLivewireForSubdirectory(): void
     {
         $basePath = rtrim((string) parse_url((string) config('app.url'), PHP_URL_PATH), '/');
+        $publishedAssets = public_path('vendor/livewire/manifest.json');
 
-        if ($basePath !== '') {
+        // Prefer published static assets (public/vendor/livewire). They work on
+        // Vercel's static file routes and avoid subdirectory path issues.
+        if ($basePath !== '' && ! is_file($publishedAssets)) {
             $livewireScript = config('app.debug') ? 'livewire.js' : 'livewire.min.js';
             config(['livewire.asset_url' => $basePath.'/livewire/'.$livewireScript]);
         }
