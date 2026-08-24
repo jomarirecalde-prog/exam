@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ExamStatus;
+use App\Http\Requests\ImportQuestionCsvRequest;
 use App\Http\Requests\StoreExaminationRequest;
 use App\Http\Requests\UpdateExaminationRequest;
 use App\Models\AcademicYear;
@@ -12,12 +13,14 @@ use App\Models\Semester;
 use App\Models\Subject;
 use App\Models\YearLevel;
 use App\Services\Examinations\ExaminationSectionService;
+use App\Services\Questions\QuestionCsvImporter;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExaminationController extends Controller
 {
@@ -139,6 +142,38 @@ class ExaminationController extends Controller
         ]);
     }
 
+    public function importQuestions(ImportQuestionCsvRequest $request, QuestionCsvImporter $importer): JsonResponse
+    {
+        $result = $importer->import($request->file('file')->getRealPath());
+
+        if ($result['imported'] === 0) {
+            return response()->json([
+                'message' => 'No questions were imported.',
+                'errors' => $result['errors'],
+                'warnings' => $result['warnings'],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => $result['imported'].' question(s) imported.',
+            'questions' => $result['questions'],
+            'errors' => $result['errors'],
+            'warnings' => $result['warnings'],
+            'imported' => $result['imported'],
+        ]);
+    }
+
+    public function questionCsvTemplate(QuestionCsvImporter $importer): StreamedResponse
+    {
+        $this->authorize('create', Examination::class);
+
+        return response()->streamDownload(
+            fn () => print ($importer->template()),
+            'question-import-template.csv',
+            ['Content-Type' => 'text/csv; charset=UTF-8'],
+        );
+    }
+
     protected function formPayload(Request $request, ?Examination $examination = null): array
     {
         $primary = $examination?->sections->first() ?? $examination?->section;
@@ -148,6 +183,8 @@ class ExaminationController extends Controller
             'storeUrl' => route('examinations.store'),
             'updateUrl' => $examination ? route('examinations.update', $examination) : null,
             'sectionsUrl' => route('examinations.sections'),
+            'importQuestionsUrl' => route('examinations.import-questions'),
+            'questionCsvTemplateUrl' => route('examinations.question-csv-template'),
             'indexUrl' => route('examinations.index'),
             'academicYears' => AcademicYear::query()->where('is_active', true)->orderByDesc('is_current')->orderByDesc('name')->get(['id', 'name', 'is_current']),
             'semesters' => Semester::query()->where('is_active', true)->orderBy('order')->get(['id', 'academic_year_id', 'name', 'is_current']),

@@ -83,6 +83,8 @@ window.examWizard = function examWizard(config = {}) {
         storeUrl: config.storeUrl || '',
         updateUrl: config.updateUrl || '',
         sectionsUrl: config.sectionsUrl || '',
+        importQuestionsUrl: config.importQuestionsUrl || '',
+        questionCsvTemplateUrl: config.questionCsvTemplateUrl || '',
         indexUrl: config.indexUrl || '',
         academicYears: config.academicYears || [],
         semesters: config.semesters || [],
@@ -95,6 +97,9 @@ window.examWizard = function examWizard(config = {}) {
         sectionQuery: '',
         sectionMenuOpen: false,
         sectionAbort: null,
+        importingQuestions: false,
+        importMode: 'append',
+        importErrors: [],
         errors: config.errors || {},
         steps: [
             { id: 1, key: '01', label: 'Information' },
@@ -437,9 +442,83 @@ window.examWizard = function examWizard(config = {}) {
             this.questions.push(this.createQuestion());
             window.appToast('Question added.');
         },
+        nextQuestionId() {
+            return this.questions.reduce((max, question) => Math.max(max, Number(question.id) || 0), 0) + 1;
+        },
+        assignImportedQuestionIds(items) {
+            let nextId = this.nextQuestionId();
+
+            return items.map((question) => ({
+                ...question,
+                id: nextId++,
+            }));
+        },
+        async importQuestionsFromCsv(event) {
+            const input = event.target;
+            const file = input.files?.[0];
+
+            input.value = '';
+
+            if (!file) {
+                return;
+            }
+
+            if (!this.importQuestionsUrl) {
+                window.appToast('CSV import is unavailable.', 'error');
+                return;
+            }
+
+            this.importingQuestions = true;
+            this.importErrors = [];
+
+            const body = new FormData();
+            body.append('file', file);
+
+            try {
+                const response = await fetch(this.importQuestionsUrl, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': this.csrfToken(),
+                    },
+                    body,
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (response.status === 422) {
+                    this.importErrors = data.errors || [data.message || 'Unable to import questions from this CSV file.'];
+                    window.appToast(this.importErrors[0] || 'Import failed.', 'error');
+                    return;
+                }
+
+                if (!response.ok) {
+                    window.appToast(data.message || 'Unable to import questions.', 'error');
+                    return;
+                }
+
+                const imported = this.assignImportedQuestionIds(data.questions || []);
+
+                if (this.importMode === 'replace') {
+                    this.questions = imported;
+                } else {
+                    this.questions.push(...imported);
+                }
+
+                this.importErrors = data.errors || [];
+
+                const message = data.message || `${imported.length} question(s) imported.`;
+                window.appToast(message, this.importErrors.length ? 'warning' : 'success');
+            } catch (error) {
+                window.appToast('Unable to import questions.', 'error');
+            } finally {
+                this.importingQuestions = false;
+            }
+        },
         createQuestion(overrides = {}) {
             return {
-                id: this.questions.length + 1,
+                id: this.nextQuestionId(),
                 type: 'multiple_choice',
                 text: '',
                 choices: [
@@ -498,7 +577,7 @@ window.examWizard = function examWizard(config = {}) {
         },
         duplicateQuestion(index) {
             const copy = JSON.parse(JSON.stringify(this.questions[index]));
-            copy.id = this.questions.length + 1;
+            copy.id = this.nextQuestionId();
             this.questions.splice(index + 1, 0, copy);
         },
         removeQuestion(index) {
