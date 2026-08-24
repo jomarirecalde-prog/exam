@@ -241,26 +241,75 @@
                                     </div>
                                 </div>
                                 <div class="mt-4 grid gap-4">
-                                    <select class="ui-input max-w-xs" x-model="question.type" aria-label="Question type">
-                                        <option value="multiple_choice">Multiple Choice</option>
-                                        <option value="true_false">True / False</option>
-                                        <option value="identification">Identification</option>
-                                        <option value="essay">Essay</option>
-                                    </select>
+                                    <x-ui.field label="Question type">
+                                        <select class="ui-input max-w-xs" x-model="question.type" @change="onQuestionTypeChange(question)" aria-label="Question type">
+                                            <option value="multiple_choice">Multiple Choice</option>
+                                            <option value="true_false">True / False</option>
+                                            <option value="identification">Identification</option>
+                                            <option value="essay">Essay</option>
+                                        </select>
+                                    </x-ui.field>
                                     <x-ui.field label="Question">
                                         <textarea class="ui-input min-h-24" placeholder="Enter question..." x-model="question.text"></textarea>
                                     </x-ui.field>
-                                    <div>
-                                        <p class="ui-label">Choices</p>
+
+                                    <div x-show="question.type === 'multiple_choice'" x-cloak>
+                                        <p class="ui-label">Answer choices</p>
+                                        <p class="mb-3 text-sm text-muted">Enter each option and select the correct answer.</p>
                                         <div class="space-y-2">
                                             <template x-for="choice in question.choices" :key="choice.id">
-                                                <label class="flex items-center gap-3">
-                                                    <span class="text-sm text-muted" x-text="choice.id"></span>
-                                                    <input class="ui-input" placeholder="Answer" x-model="choice.text">
+                                                <label class="flex items-center gap-3 rounded-card border border-line px-3 py-2"
+                                                    :class="question.correctAnswer === choice.id ? 'border-brand bg-brand-soft' : ''">
+                                                    <input
+                                                        type="radio"
+                                                        class="border-line text-navy-800"
+                                                        :name="'correct-' + question.id"
+                                                        :value="choice.id"
+                                                        x-model="question.correctAnswer"
+                                                        :aria-label="'Mark ' + choice.id + ' as correct'"
+                                                    >
+                                                    <span class="w-6 text-sm font-medium text-muted" x-text="choice.id"></span>
+                                                    <input class="ui-input border-0 bg-transparent px-0 shadow-none focus:ring-0" placeholder="Enter choice..." x-model="choice.text">
                                                 </label>
                                             </template>
                                         </div>
                                     </div>
+
+                                    <div x-show="question.type === 'true_false'" x-cloak>
+                                        <p class="ui-label">Correct answer</p>
+                                        <p class="mb-3 text-sm text-muted">Choose whether the statement is true or false.</p>
+                                        <div class="grid gap-2 sm:grid-cols-2">
+                                            <template x-for="choice in question.choices" :key="choice.id">
+                                                <label class="flex cursor-pointer items-center gap-3 rounded-card border border-line px-4 py-3"
+                                                    :class="question.correctAnswer === choice.id ? 'border-brand bg-brand-soft' : ''">
+                                                    <input
+                                                        type="radio"
+                                                        class="border-line text-navy-800"
+                                                        :name="'tf-' + question.id"
+                                                        :value="choice.id"
+                                                        x-model="question.correctAnswer"
+                                                    >
+                                                    <span class="font-medium" x-text="choice.text"></span>
+                                                </label>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <div x-show="question.type === 'identification'" x-cloak>
+                                        <x-ui.field label="Correct answer" help="Student responses are matched to this answer automatically (case-insensitive).">
+                                            <input class="ui-input" type="text" placeholder="Enter the accepted answer..." x-model="question.correctAnswer">
+                                        </x-ui.field>
+                                    </div>
+
+                                    <div x-show="question.type === 'essay'" x-cloak>
+                                        <div class="rounded-card border border-line bg-brand-soft px-4 py-3 text-sm text-muted">
+                                            Essay questions are graded manually after students submit their responses.
+                                        </div>
+                                        <x-ui.field class="mt-4" label="Sample answer / rubric notes" help="Optional reference for grading. Not shown to students.">
+                                            <textarea class="ui-input min-h-24" placeholder="Add grading notes or a sample response..." x-model="question.sampleAnswer"></textarea>
+                                        </x-ui.field>
+                                    </div>
+
                                     <div class="grid gap-4 sm:grid-cols-3">
                                         <x-ui.field label="Points">
                                             <input class="ui-input" type="number" min="1" x-model="question.points">

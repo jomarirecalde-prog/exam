@@ -114,6 +114,8 @@ window.examWizard = function examWizard(config = {}) {
                     { id: 'C', text: 'A programming language' },
                     { id: 'D', text: 'A network protocol' },
                 ],
+                correctAnswer: 'B',
+                sampleAnswer: '',
                 points: 1,
                 difficulty: 'Medium',
                 topic: 'IS Fundamentals',
@@ -432,7 +434,11 @@ window.examWizard = function examWizard(config = {}) {
             }
         },
         addQuestion() {
-            this.questions.push({
+            this.questions.push(this.createQuestion());
+            window.appToast('Question added.');
+        },
+        createQuestion(overrides = {}) {
+            return {
                 id: this.questions.length + 1,
                 type: 'multiple_choice',
                 text: '',
@@ -442,11 +448,53 @@ window.examWizard = function examWizard(config = {}) {
                     { id: 'C', text: '' },
                     { id: 'D', text: '' },
                 ],
+                correctAnswer: '',
+                sampleAnswer: '',
                 points: 1,
                 difficulty: 'Medium',
                 topic: '',
-            });
-            window.appToast('Question added.');
+                ...overrides,
+            };
+        },
+        questionTypeDefaults(type) {
+            const defaults = {
+                multiple_choice: {
+                    choices: [
+                        { id: 'A', text: '' },
+                        { id: 'B', text: '' },
+                        { id: 'C', text: '' },
+                        { id: 'D', text: '' },
+                    ],
+                    correctAnswer: '',
+                    sampleAnswer: '',
+                },
+                true_false: {
+                    choices: [
+                        { id: 'true', text: 'True' },
+                        { id: 'false', text: 'False' },
+                    ],
+                    correctAnswer: 'true',
+                    sampleAnswer: '',
+                },
+                identification: {
+                    choices: [],
+                    correctAnswer: '',
+                    sampleAnswer: '',
+                },
+                essay: {
+                    choices: [],
+                    correctAnswer: '',
+                    sampleAnswer: '',
+                },
+            };
+
+            return defaults[type] || defaults.multiple_choice;
+        },
+        onQuestionTypeChange(question) {
+            const defaults = this.questionTypeDefaults(question.type);
+            question.choices = JSON.parse(JSON.stringify(defaults.choices));
+            question.correctAnswer = defaults.correctAnswer;
+            question.sampleAnswer = defaults.sampleAnswer;
         },
         duplicateQuestion(index) {
             const copy = JSON.parse(JSON.stringify(this.questions[index]));
