@@ -126,6 +126,93 @@ class SubjectManagementTest extends TestCase
             ->assertSessionHasErrors('instructor_id');
     }
 
+    public function test_admin_can_create_subject_with_same_code_and_name_for_different_instructor(): void
+    {
+        $department = $this->department();
+        $term = $this->term();
+        $firstInstructor = $this->instructor($department, 'EMP-101');
+        $secondInstructor = $this->instructor($department, 'EMP-102');
+
+        $this->actingAs($this->admin())->post(route('subjects.store'), [
+            'code' => 'IS101',
+            'name' => 'Introduction to Information Systems',
+            'department_id' => $department->id,
+            'units' => '3',
+            'is_active' => '1',
+            'instructor_id' => $firstInstructor->id,
+            'academic_year_id' => $term['year']->id,
+            'semester_id' => $term['semester']->id,
+        ])->assertRedirect();
+
+        $response = $this->actingAs($this->admin())->post(route('subjects.store'), [
+            'code' => 'IS101',
+            'name' => 'Introduction to Information Systems',
+            'department_id' => $department->id,
+            'units' => '3',
+            'is_active' => '1',
+            'instructor_id' => $secondInstructor->id,
+            'academic_year_id' => $term['year']->id,
+            'semester_id' => $term['semester']->id,
+        ]);
+
+        $this->assertSame(2, Subject::query()->where('code', 'IS101')->count());
+        $response->assertRedirect();
+    }
+
+    public function test_admin_cannot_create_duplicate_subject_for_same_instructor(): void
+    {
+        $department = $this->department();
+        $term = $this->term();
+        $instructor = $this->instructor($department, 'EMP-103');
+
+        $this->actingAs($this->admin())->post(route('subjects.store'), [
+            'code' => 'IS101',
+            'name' => 'Introduction to Information Systems',
+            'department_id' => $department->id,
+            'units' => '3',
+            'is_active' => '1',
+            'instructor_id' => $instructor->id,
+            'academic_year_id' => $term['year']->id,
+            'semester_id' => $term['semester']->id,
+        ])->assertRedirect();
+
+        $this->actingAs($this->admin())
+            ->post(route('subjects.store'), [
+                'code' => 'IS101',
+                'name' => 'Introduction to Information Systems',
+                'department_id' => $department->id,
+                'units' => '3',
+                'is_active' => '1',
+                'instructor_id' => $instructor->id,
+                'academic_year_id' => $term['year']->id,
+                'semester_id' => $term['semester']->id,
+            ])
+            ->assertSessionHasErrors(['code', 'name']);
+    }
+
+    public function test_admin_cannot_reuse_code_without_instructor_when_subject_exists(): void
+    {
+        $department = $this->department();
+
+        Subject::create([
+            'department_id' => $department->id,
+            'code' => 'IS101',
+            'name' => 'Introduction to Information Systems',
+            'units' => 3,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->post(route('subjects.store'), [
+                'code' => 'IS101',
+                'name' => 'Another Subject Name',
+                'department_id' => $department->id,
+                'units' => '3',
+                'is_active' => '1',
+            ])
+            ->assertSessionHasErrors('code');
+    }
+
     public function test_view_and_edit_pages_are_available(): void
     {
         $admin = $this->admin();
@@ -218,14 +305,14 @@ class SubjectManagementTest extends TestCase
         return compact('year', 'semester');
     }
 
-    protected function instructor(Department $department): Instructor
+    protected function instructor(Department $department, string $employeeId = 'EMP-100'): Instructor
     {
         $user = User::factory()->create(['is_active' => true]);
         $user->assignRole(UserRole::Instructor->value);
 
         return Instructor::create([
             'user_id' => $user->id,
-            'employee_id' => 'EMP-100',
+            'employee_id' => $employeeId,
             'department_id' => $department->id,
             'is_active' => true,
         ]);

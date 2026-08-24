@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Instructor;
 use App\Models\Semester;
+use App\Models\Subject;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -17,7 +18,7 @@ class StoreSubjectRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required', 'string', 'max:20', 'unique:subjects,code'],
+            'code' => ['required', 'string', 'max:20'],
             'name' => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:500'],
             'department_id' => ['nullable', 'exists:departments,id'],
@@ -47,6 +48,21 @@ class StoreSubjectRequest extends FormRequest
                 if ($semester && (int) $semester->academic_year_id !== (int) $this->input('academic_year_id')) {
                     $validator->errors()->add('semester_id', 'The selected semester does not belong to the chosen academic year.');
                 }
+            }
+
+            if ($this->filled('instructor_id')) {
+                $duplicate = Subject::query()
+                    ->where('code', $this->input('code'))
+                    ->where('name', $this->input('name'))
+                    ->whereHas('instructors', fn ($query) => $query->where('instructors.id', $this->input('instructor_id')))
+                    ->exists();
+
+                if ($duplicate) {
+                    $validator->errors()->add('code', 'This subject code and name are already assigned to the selected instructor.');
+                    $validator->errors()->add('name', 'This subject code and name are already assigned to the selected instructor.');
+                }
+            } elseif (Subject::query()->where('code', $this->input('code'))->exists()) {
+                $validator->errors()->add('code', 'The code has already been taken. Assign a different instructor to reuse this code.');
             }
         });
     }

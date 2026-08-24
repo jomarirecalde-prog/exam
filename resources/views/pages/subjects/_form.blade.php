@@ -3,7 +3,7 @@
 @endphp
 
 <div class="grid gap-5 sm:grid-cols-2">
-    <x-ui.field label="Code" for="code" help="A short unique code, such as IS101." :error="$errors->first('code')">
+    <x-ui.field label="Code" for="code" help="You may reuse a code when assigning a different instructor." :error="$errors->first('code')">
         <x-text-input id="code" name="code" type="text" value="{{ old('code', $subject?->code) }}" required />
     </x-ui.field>
 
@@ -11,7 +11,7 @@
         <x-text-input id="units" name="units" type="number" min="1" max="12" value="{{ old('units', $subject?->units ?? 3) }}" required />
     </x-ui.field>
 
-    <x-ui.field class="sm:col-span-2" label="Subject name" for="name" :error="$errors->first('name')">
+    <x-ui.field class="sm:col-span-2" label="Subject name" for="name" help="You may reuse a subject name when assigning a different instructor." :error="$errors->first('name')">
         <x-text-input id="name" name="name" type="text" value="{{ old('name', $subject?->name) }}" required />
     </x-ui.field>
 
