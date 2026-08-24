@@ -12,13 +12,18 @@ use App\Models\Program;
 use App\Models\Semester;
 use App\Models\Subject;
 use App\Models\YearLevel;
+use App\Http\Requests\ConfirmQuestionCsvRequest;
+use App\Services\AuditLogger;
 use App\Services\Examinations\ExaminationSectionService;
+use App\Services\Questions\ExaminationQuestionService;
 use App\Services\Questions\QuestionCsvImporter;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -28,6 +33,7 @@ class ExaminationController extends Controller
 
     public function __construct(
         protected ExaminationSectionService $sections,
+        protected ExaminationQuestionService $questions,
     ) {
     }
 
@@ -66,6 +72,10 @@ class ExaminationController extends Controller
             $this->sections->sync($examination, $data['section_ids'], false);
             $this->syncSettings($examination, $data);
             $this->syncSchedule($examination, $data, $status);
+
+            if (! empty($data['questions'])) {
+                $this->questions->sync($examination, $data['questions'], $request->user()->instructor?->id);
+            }
 
             return $examination->load('sections');
         });
@@ -107,6 +117,10 @@ class ExaminationController extends Controller
             $this->sections->sync($examination, $data['section_ids']);
             $this->syncSettings($examination, $data);
             $this->syncSchedule($examination, $data, $status);
+
+            if (array_key_exists('questions', $data)) {
+                $this->questions->sync($examination, $data['questions'] ?? [], $request->user()->instructor?->id);
+            }
         });
 
         $examination->refresh()->load('sections');
@@ -142,25 +156,99 @@ class ExaminationController extends Controller
         ]);
     }
 
-    public function importQuestions(ImportQuestionCsvRequest $request, QuestionCsvImporter $importer): JsonResponse
+    public function previewQuestionsCsv(ImportQuestionCsvRequest $request, QuestionCsvImporter $importer): JsonResponse
     {
-        $result = $importer->import($request->file('file')->getRealPath());
+        $subjectId = $request->integer('subject_id') ?: null;
+        $result = $importer->import($request->file('file')->getRealPath(), $subjectId);
 
-        if ($result['imported'] === 0) {
+        if ($result['stats']['total'] === 0 && $result['stats']['valid'] === 0) {
             return response()->json([
-                'message' => 'No questions were imported.',
+                'message' => 'Unable to preview this CSV file.',
                 'errors' => $result['errors'],
-                'warnings' => $result['warnings'],
+                'rowErrors' => $result['rowErrors'],
+                'stats' => $result['stats'],
+                'preview' => $result['preview'],
             ], 422);
         }
 
+        $token = (string) Str::uuid();
+        Cache::put("exam-csv-import:{$token}", [
+            'questions' => $result['questions'],
+            'rowErrors' => $result['rowErrors'],
+            'stats' => $result['stats'],
+        ], now()->addMinutes(15));
+
         return response()->json([
-            'message' => $result['imported'].' question(s) imported.',
+            'message' => 'CSV preview ready.',
+            'token' => $token,
             'questions' => $result['questions'],
             'errors' => $result['errors'],
+            'rowErrors' => $result['rowErrors'],
             'warnings' => $result['warnings'],
+            'stats' => $result['stats'],
+            'preview' => $result['preview'],
             'imported' => $result['imported'],
         ]);
+    }
+
+    public function importQuestions(ConfirmQuestionCsvRequest $request, AuditLogger $audit): JsonResponse
+    {
+        $cacheKey = "exam-csv-import:{$request->input('token')}";
+        $cached = Cache::get($cacheKey);
+
+        if (! is_array($cached) || empty($cached['questions'])) {
+            return response()->json([
+                'message' => 'Import session expired. Please upload the CSV file again.',
+            ], 422);
+        }
+
+        Cache::forget($cacheKey);
+
+        $audit->log(
+            $request->user(),
+            'import',
+            'examinations',
+            'questions',
+            null,
+            [
+                'context' => 'wizard',
+                'import_mode' => $request->input('import_mode', 'append'),
+                'imported' => count($cached['questions']),
+                'stats' => $cached['stats'] ?? [],
+            ],
+        );
+
+        return response()->json([
+            'message' => count($cached['questions']).' question(s) ready to add.',
+            'questions' => $cached['questions'],
+            'errors' => array_map(
+                fn (array $error) => "Row {$error['row']}\n".ucfirst(str_replace('_', ' ', $error['field'])).": {$error['message']}",
+                $cached['rowErrors'] ?? [],
+            ),
+            'rowErrors' => $cached['rowErrors'] ?? [],
+            'imported' => count($cached['questions']),
+            'stats' => $cached['stats'] ?? [],
+        ]);
+    }
+
+    public function questionCsvErrorReport(ImportQuestionCsvRequest $request, QuestionCsvImporter $importer): StreamedResponse|JsonResponse
+    {
+        $result = $importer->import(
+            $request->file('file')->getRealPath(),
+            $request->integer('subject_id') ?: null,
+        );
+
+        if ($result['rowErrors'] === []) {
+            return response()->json([
+                'message' => 'No import errors to download.',
+            ], 422);
+        }
+
+        return response()->streamDownload(
+            fn () => print ($importer->errorReport($result['rowErrors'])),
+            'import-errors-'.now()->format('Y-m-d').'.csv',
+            ['Content-Type' => 'text/csv; charset=UTF-8'],
+        );
     }
 
     public function questionCsvTemplate(QuestionCsvImporter $importer): StreamedResponse
@@ -183,8 +271,13 @@ class ExaminationController extends Controller
             'storeUrl' => route('examinations.store'),
             'updateUrl' => $examination ? route('examinations.update', $examination) : null,
             'sectionsUrl' => route('examinations.sections'),
+            'previewQuestionsUrl' => route('examinations.preview-questions-csv'),
             'importQuestionsUrl' => route('examinations.import-questions'),
             'questionCsvTemplateUrl' => route('examinations.question-csv-template'),
+            'questionCsvErrorReportUrl' => route('examinations.question-csv-error-report'),
+            'questions' => $examination
+                ? $this->questions->toWizardPayload($examination->loadMissing('examQuestions.question.choices'))
+                : [],
             'indexUrl' => route('examinations.index'),
             'academicYears' => AcademicYear::query()->where('is_active', true)->orderByDesc('is_current')->orderByDesc('name')->get(['id', 'name', 'is_current']),
             'semesters' => Semester::query()->where('is_active', true)->orderBy('order')->get(['id', 'academic_year_id', 'name', 'is_current']),

@@ -2,6 +2,7 @@
 
 namespace App\Services\Questions;
 
+use App\Models\Question;
 use InvalidArgumentException;
 
 class QuestionCsvImporter
@@ -15,9 +16,44 @@ class QuestionCsvImporter
     ];
 
     /**
-     * @return array{questions: list<array<string, mixed>>, errors: list<string>, warnings: list<string>, imported: int}
+     * @return array{
+     *     questions: list<array<string, mixed>>,
+     *     errors: list<string>,
+     *     rowErrors: list<array{row: int, field: string, message: string}>,
+     *     warnings: list<string>,
+     *     imported: int,
+     *     stats: array{total: int, valid: int, errors: int, duplicates: int},
+     *     preview: list<array{row: int, question: string, type: string, topic: string, status: string, message: string|null}>
+     * }
      */
-    public function import(string $path): array
+    public function import(string $path, ?int $subjectId = null): array
+    {
+        $result = $this->parse($path, $subjectId);
+
+        return [
+            'questions' => $result['questions'],
+            'errors' => array_map(
+                fn (array $error) => $this->formatRowError($error),
+                $result['rowErrors'],
+            ),
+            'rowErrors' => $result['rowErrors'],
+            'warnings' => $result['warnings'],
+            'imported' => count($result['questions']),
+            'stats' => $result['stats'],
+            'preview' => $result['preview'],
+        ];
+    }
+
+    /**
+     * @return array{
+     *     questions: list<array<string, mixed>>,
+     *     rowErrors: list<array{row: int, field: string, message: string}>,
+     *     warnings: list<string>,
+     *     stats: array{total: int, valid: int, errors: int, duplicates: int},
+     *     preview: list<array{row: int, question: string, type: string, topic: string, status: string, message: string|null}>
+     * }
+     */
+    public function parse(string $path, ?int $subjectId = null): array
     {
         $handle = fopen($path, 'r');
 
@@ -30,12 +66,7 @@ class QuestionCsvImporter
         if ($header === false) {
             fclose($handle);
 
-            return [
-                'questions' => [],
-                'errors' => ['The CSV file is empty.'],
-                'warnings' => [],
-                'imported' => 0,
-            ];
+            return $this->emptyResult(['The CSV file is empty.']);
         }
 
         $columns = $this->normalizeHeader($header);
@@ -44,18 +75,18 @@ class QuestionCsvImporter
         if ($missing !== []) {
             fclose($handle);
 
-            return [
-                'questions' => [],
-                'errors' => ['Missing required column(s): '.implode(', ', $missing).'.'],
-                'warnings' => [],
-                'imported' => 0,
-            ];
+            return $this->emptyResult(['Missing required column(s): '.implode(', ', $missing).'.']);
         }
 
         $questions = [];
-        $errors = [];
+        $rowErrors = [];
         $warnings = [];
+        $preview = [];
+        $seenKeys = [];
+        $existingKeys = $subjectId ? $this->existingQuestionKeys($subjectId) : [];
         $rowNumber = 1;
+        $totalRows = 0;
+        $duplicateCount = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
@@ -64,26 +95,68 @@ class QuestionCsvImporter
                 continue;
             }
 
+            $totalRows++;
             $data = $this->rowToAssoc($columns, $row);
 
             try {
-                $questions[] = $this->mapRow($data, $rowNumber);
+                $question = $this->mapRow($data, $rowNumber);
+                $duplicateKey = $this->duplicateKey($question, $data);
+
+                if (isset($seenKeys[$duplicateKey])) {
+                    $duplicateCount++;
+                    $rowErrors[] = [
+                        'row' => $rowNumber,
+                        'field' => 'question',
+                        'message' => 'Duplicate question detected in this CSV file.',
+                    ];
+                    $preview[] = $this->previewRow($rowNumber, $data, 'duplicate', 'Duplicate question in CSV');
+
+                    continue;
+                }
+
+                if ($subjectId && isset($existingKeys[$duplicateKey])) {
+                    $duplicateCount++;
+                    $rowErrors[] = [
+                        'row' => $rowNumber,
+                        'field' => 'question',
+                        'message' => 'This question already exists in the question bank.',
+                    ];
+                    $preview[] = $this->previewRow($rowNumber, $data, 'duplicate', 'Question already exists');
+
+                    continue;
+                }
+
+                $seenKeys[$duplicateKey] = $rowNumber;
+                $questions[] = $question;
+                $preview[] = $this->previewRow($rowNumber, $data, 'valid');
             } catch (InvalidArgumentException $exception) {
-                $errors[] = $exception->getMessage();
+                [$field, $message] = $this->splitRowError($exception->getMessage(), $rowNumber);
+                $rowErrors[] = [
+                    'row' => $rowNumber,
+                    'field' => $field,
+                    'message' => $message,
+                ];
+                $preview[] = $this->previewRow($rowNumber, $data, 'error', $message);
             }
         }
 
         fclose($handle);
 
-        if ($questions === [] && $errors === []) {
-            $errors[] = 'No question rows were found in the CSV file.';
+        if ($totalRows === 0 && $rowErrors === []) {
+            return $this->emptyResult(['No question rows were found in the CSV file.']);
         }
 
         return [
             'questions' => $questions,
-            'errors' => $errors,
+            'rowErrors' => $rowErrors,
             'warnings' => $warnings,
-            'imported' => count($questions),
+            'stats' => [
+                'total' => $totalRows,
+                'valid' => count($questions),
+                'errors' => count(array_filter($preview, fn (array $row) => $row['status'] === 'error')),
+                'duplicates' => $duplicateCount,
+            ],
+            'preview' => array_slice($preview, 0, 10),
         ];
     }
 
@@ -97,6 +170,114 @@ class QuestionCsvImporter
             ['Explain the role of information systems in modern organizations.', 'essay', '', '', '', '', '', '5', 'hard', 'IS Fundamentals', 'Sample grading notes or rubric.'],
         ];
 
+        return $this->rowsToCsv($rows);
+    }
+
+    /**
+     * @param  list<array{row: int, field: string, message: string}>  $rowErrors
+     */
+    public function errorReport(array $rowErrors): string
+    {
+        $rows = [['row', 'field', 'message']];
+
+        foreach ($rowErrors as $error) {
+            $rows[] = [
+                (string) $error['row'],
+                $error['field'],
+                $error['message'],
+            ];
+        }
+
+        return $this->rowsToCsv($rows);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $questions
+     * @return array{created: int, updated: int, skipped: int}
+     */
+    public function persist(array $questions, int $subjectId, ?int $instructorId, string $mode = 'create'): array
+    {
+        $counts = ['created' => 0, 'updated' => 0, 'skipped' => 0];
+        $existing = Question::query()
+            ->where('subject_id', $subjectId)
+            ->get(['id', 'question_text']);
+
+        $existingMap = [];
+
+        foreach ($existing as $question) {
+            $existingMap[$this->normalizeText($question->question_text)] = $question->id;
+        }
+
+        foreach ($questions as $payload) {
+            $key = $this->normalizeText($payload['text']);
+            $existingId = $existingMap[$key] ?? null;
+
+            if ($existingId && $mode === 'create') {
+                $counts['skipped']++;
+
+                continue;
+            }
+
+            if (! $existingId && $mode === 'update') {
+                $counts['skipped']++;
+
+                continue;
+            }
+
+            if ($existingId) {
+                $this->updateQuestion($existingId, $payload, $subjectId, $instructorId);
+                $counts['updated']++;
+            } else {
+                $question = $this->createQuestion($payload, $subjectId, $instructorId);
+                $existingMap[$key] = $question->id;
+                $counts['created']++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param  list<string>  $messages
+     * @return array{
+     *     questions: list<array<string, mixed>>,
+     *     rowErrors: list<array{row: int, field: string, message: string}>,
+     *     warnings: list<string>,
+     *     stats: array{total: int, valid: int, errors: int, duplicates: int},
+     *     preview: list<array{row: int, question: string, type: string, topic: string, status: string, message: string|null}>
+     * }
+     */
+    protected function emptyResult(array $messages): array
+    {
+        $rowErrors = [];
+
+        foreach ($messages as $message) {
+            $rowErrors[] = [
+                'row' => 0,
+                'field' => 'file',
+                'message' => $message,
+            ];
+        }
+
+        return [
+            'questions' => [],
+            'rowErrors' => $rowErrors,
+            'warnings' => [],
+            'stats' => [
+                'total' => 0,
+                'valid' => 0,
+                'errors' => count($messages),
+                'duplicates' => 0,
+            ],
+            'preview' => [],
+        ];
+    }
+
+    /**
+     * @param  list<list<string>>  $rows
+     */
+    protected function rowsToCsv(array $rows): string
+    {
         $stream = fopen('php://temp', 'r+');
 
         foreach ($rows as $row) {
@@ -107,7 +288,90 @@ class QuestionCsvImporter
         $csv = stream_get_contents($stream) ?: '';
         fclose($stream);
 
-        return $csv;
+        return "\xEF\xBB\xBF".$csv;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    protected function existingQuestionKeys(int $subjectId): array
+    {
+        $keys = [];
+
+        Question::query()
+            ->where('subject_id', $subjectId)
+            ->pluck('question_text')
+            ->each(function (string $text) use (&$keys) {
+                $keys[$this->normalizeText($text)] = true;
+            });
+
+        return $keys;
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     * @param  array<string, string>  $data
+     */
+    protected function duplicateKey(array $question, array $data): string
+    {
+        $subjectCode = strtolower(trim($data['subject_code'] ?? ''));
+
+        return $subjectCode.'|'.$this->normalizeText($question['text']);
+    }
+
+    protected function normalizeText(string $text): string
+    {
+        return strtolower(trim(preg_replace('/\s+/', ' ', $text) ?? $text));
+    }
+
+    /**
+     * @param  array<string, string>  $data
+     * @return array{row: int, question: string, type: string, topic: string, status: string, message: string|null}
+     */
+    protected function previewRow(int $rowNumber, array $data, string $status, ?string $message = null): array
+    {
+        return [
+            'row' => $rowNumber,
+            'question' => \Illuminate\Support\Str::limit($data['question'] ?? '', 80),
+            'type' => $data['type'] ?? '',
+            'topic' => $data['topic'] ?? '—',
+            'status' => $status,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function splitRowError(string $message, int $rowNumber): array
+    {
+        if (preg_match('/^Row \d+: (.+)$/', $message, $matches)) {
+            $detail = $matches[1];
+
+            if (str_contains($detail, ':')) {
+                [$field, $rest] = explode(':', $detail, 2);
+
+                return [trim($field), trim($rest)];
+            }
+
+            return ['question', $detail];
+        }
+
+        return ['file', $message];
+    }
+
+    /**
+     * @param  array{row: int, field: string, message: string}  $error
+     */
+    protected function formatRowError(array $error): string
+    {
+        if ($error['row'] <= 0) {
+            return $error['message'];
+        }
+
+        $field = ucfirst(str_replace('_', ' ', $error['field']));
+
+        return "Row {$error['row']}\n{$field}: {$error['message']}";
     }
 
     /**
@@ -143,6 +407,7 @@ class QuestionCsvImporter
             'choicec' => 'choice_c',
             'choiced' => 'choice_d',
             'sample', 'rubric', 'sampleanswer', 'rubric_notes' => 'sample_answer',
+            'subject', 'subjectcode' => 'subject_code',
             default => $key,
         };
     }
@@ -295,6 +560,99 @@ class QuestionCsvImporter
             'difficulty' => $difficulty,
             'topic' => $topic,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function createQuestion(array $payload, int $subjectId, ?int $instructorId): Question
+    {
+        $question = Question::create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'subject_id' => $subjectId,
+            'instructor_id' => $instructorId,
+            'type' => $payload['type'],
+            'question_text' => $payload['text'],
+            'correct_answer' => $this->dbCorrectAnswer($payload),
+            'points' => $payload['points'],
+            'explanation' => $payload['sampleAnswer'] ?: null,
+            'difficulty' => strtolower($payload['difficulty']),
+            'metadata' => filled($payload['topic']) ? ['topic' => $payload['topic']] : null,
+        ]);
+
+        $this->syncChoices($question, $payload);
+
+        return $question;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function updateQuestion(int $questionId, array $payload, int $subjectId, ?int $instructorId): void
+    {
+        $question = Question::query()->findOrFail($questionId);
+
+        $question->update([
+            'subject_id' => $subjectId,
+            'instructor_id' => $instructorId,
+            'type' => $payload['type'],
+            'question_text' => $payload['text'],
+            'correct_answer' => $this->dbCorrectAnswer($payload),
+            'points' => $payload['points'],
+            'explanation' => $payload['sampleAnswer'] ?: null,
+            'difficulty' => strtolower($payload['difficulty']),
+            'metadata' => filled($payload['topic']) ? ['topic' => $payload['topic']] : null,
+        ]);
+
+        $question->choices()->delete();
+        $this->syncChoices($question, $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function syncChoices(Question $question, array $payload): void
+    {
+        if ($payload['type'] === 'multiple_choice') {
+            foreach ($payload['choices'] as $index => $choice) {
+                if ($choice['text'] === '') {
+                    continue;
+                }
+
+                $question->choices()->create([
+                    'label' => $choice['id'],
+                    'choice_text' => $choice['text'],
+                    'is_correct' => strtoupper((string) $payload['correctAnswer']) === strtoupper((string) $choice['id']),
+                    'order' => $index,
+                ]);
+            }
+
+            return;
+        }
+
+        if ($payload['type'] === 'true_false') {
+            foreach ($payload['choices'] as $index => $choice) {
+                $question->choices()->create([
+                    'label' => $choice['id'],
+                    'choice_text' => $choice['text'],
+                    'is_correct' => (string) $payload['correctAnswer'] === (string) $choice['id'],
+                    'order' => $index,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function dbCorrectAnswer(array $payload): mixed
+    {
+        return match ($payload['type']) {
+            'multiple_choice' => [strtolower((string) $payload['correctAnswer'])],
+            'true_false' => [(string) $payload['correctAnswer']],
+            'identification' => [(string) $payload['correctAnswer']],
+            default => null,
+        };
     }
 
     protected function normalizeType(string $type): ?string

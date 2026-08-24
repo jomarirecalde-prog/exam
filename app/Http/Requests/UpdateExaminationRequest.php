@@ -53,6 +53,17 @@ class UpdateExaminationRequest extends FormRequest
                 ExamStatus::Scheduled->value,
                 ExamStatus::Active->value,
             ])],
+            'questions' => ['sometimes', 'array'],
+            'questions.*.type' => ['required_with:questions', 'string', Rule::in(['multiple_choice', 'true_false', 'identification', 'essay'])],
+            'questions.*.text' => ['required_with:questions', 'string'],
+            'questions.*.points' => ['nullable', 'integer', 'min:1'],
+            'questions.*.difficulty' => ['nullable', 'string', 'max:50'],
+            'questions.*.topic' => ['nullable', 'string', 'max:255'],
+            'questions.*.correctAnswer' => ['nullable', 'string'],
+            'questions.*.sampleAnswer' => ['nullable', 'string'],
+            'questions.*.choices' => ['nullable', 'array'],
+            'questions.*.choices.*.id' => ['nullable', 'string', 'max:10'],
+            'questions.*.choices.*.text' => ['nullable', 'string'],
         ];
     }
 

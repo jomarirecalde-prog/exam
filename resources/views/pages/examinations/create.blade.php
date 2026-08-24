@@ -225,51 +225,18 @@
                 <section x-show="step === 3" x-cloak>
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <h2 class="ui-section">Questions</h2>
-                        <div class="flex flex-wrap gap-2">
-                            <input
-                                type="file"
-                                accept=".csv,text/csv"
-                                class="hidden"
-                                x-ref="csvInput"
-                                @change="importQuestionsFromCsv($event)"
-                            >
-                            <x-ui.button variant="secondary" size="sm" :href="route('examinations.question-csv-template')">
-                                Download template
-                            </x-ui.button>
-                            <x-ui.button variant="secondary" size="sm" @click="$refs.csvInput.click()" x-bind:disabled="importingQuestions">
-                                <span x-show="!importingQuestions">Import CSV</span>
-                                <span x-show="importingQuestions" x-cloak>Importing…</span>
-                            </x-ui.button>
-                            <x-ui.button variant="secondary" size="sm" icon="plus" x-on:click="addQuestion()">Add question</x-ui.button>
-                        </div>
+                        <x-ui.button variant="secondary" size="sm" icon="plus" x-on:click="addQuestion()">Add question</x-ui.button>
                     </div>
 
-                    <div class="mt-4 rounded-card border border-line bg-brand-soft px-4 py-3 text-sm text-muted">
-                        Import questions on demand with a CSV file. Use the template for the required columns:
-                        <span class="font-medium text-ink">question, type, choice_a–choice_d, correct_answer, points, difficulty, topic, sample_answer</span>.
+                    <div class="mt-4">
+                        <x-questions.csv-import-panel
+                            :template-url="route('examinations.question-csv-template')"
+                            :preview-url="route('examinations.preview-questions-csv')"
+                            :confirm-url="route('examinations.import-questions')"
+                            :error-report-url="route('examinations.question-csv-error-report')"
+                            @csv-imported="handleCsvImported($event.detail)"
+                        />
                     </div>
-
-                    <div class="mt-4 flex flex-wrap items-center gap-4 text-sm">
-                        <label class="flex items-center gap-2">
-                            <input type="radio" class="border-line text-navy-800" value="append" x-model="importMode">
-                            Append imported questions
-                        </label>
-                        <label class="flex items-center gap-2">
-                            <input type="radio" class="border-line text-navy-800" value="replace" x-model="importMode">
-                            Replace existing questions
-                        </label>
-                    </div>
-
-                    <template x-if="importErrors.length">
-                        <div class="mt-4 rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger-ink">
-                            <p class="font-medium">Import issues</p>
-                            <ul class="mt-2 list-disc space-y-1 pl-5">
-                                <template x-for="(error, index) in importErrors" :key="'import-error-' + index">
-                                    <li x-text="error"></li>
-                                </template>
-                            </ul>
-                        </div>
-                    </template>
 
                     <div class="mt-6 space-y-4">
                         <template x-for="(question, index) in questions" :key="question.id">

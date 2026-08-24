@@ -16,6 +16,7 @@ class ImportQuestionCsvRequest extends FormRequest
     {
         return [
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+            'subject_id' => ['nullable', 'exists:subjects,id'],
         ];
     }
 

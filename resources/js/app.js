@@ -72,6 +72,273 @@ window.examShell = function examShell() {
     };
 };
 
+window.csvImportPanel = function csvImportPanel(config = {}) {
+    return {
+        templateUrl: config.templateUrl || '',
+        previewUrl: config.previewUrl || '',
+        confirmUrl: config.confirmUrl || '',
+        errorReportUrl: config.errorReportUrl || '',
+        subjectField: Boolean(config.subjectField),
+        bankModes: Boolean(config.bankModes),
+        importModes: config.importModes || {
+            append: 'Append imported questions',
+            replace: 'Replace existing questions',
+        },
+        dragActive: false,
+        selectedFile: null,
+        importMode: 'append',
+        bankImportMode: 'upsert',
+        subjectId: '',
+        subjectError: '',
+        busy: false,
+        confirming: false,
+        statusMessage: '',
+        previewOpen: false,
+        confirmOpen: false,
+        previewToken: null,
+        previewRows: [],
+        rowErrors: [],
+        stats: {},
+        pendingQuestions: [],
+        csrfToken() {
+            return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        },
+        formatFileSize(size) {
+            if (!size) {
+                return '';
+            }
+            if (size < 1024) {
+                return `${size} B`;
+            }
+            if (size < 1024 * 1024) {
+                return `${Math.round(size / 1024)} KB`;
+            }
+            return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+        },
+        handleDrop(event) {
+            this.dragActive = false;
+            const file = event.dataTransfer?.files?.[0];
+            if (file) {
+                this.setFile(file);
+            }
+        },
+        handleFileSelect(event) {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) {
+                this.setFile(file);
+            }
+        },
+        setFile(file) {
+            if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+                window.appToast('Please choose a CSV file.', 'error');
+                return;
+            }
+            this.selectedFile = file;
+            this.rowErrors = [];
+            this.statusMessage = '';
+        },
+        clearFile() {
+            this.selectedFile = null;
+            this.previewToken = null;
+            this.previewRows = [];
+            this.rowErrors = [];
+            this.stats = {};
+            this.statusMessage = '';
+            this.previewOpen = false;
+            this.confirmOpen = false;
+        },
+        async startPreview() {
+            if (!this.selectedFile || !this.previewUrl) {
+                return;
+            }
+
+            if (this.subjectField && !this.subjectId) {
+                this.subjectError = 'Please select a subject before importing.';
+                window.appToast(this.subjectError, 'error');
+                return;
+            }
+
+            this.subjectError = '';
+            this.busy = true;
+            this.statusMessage = 'Uploading CSV file...';
+
+            const body = new FormData();
+            body.append('file', this.selectedFile);
+            if (this.subjectId) {
+                body.append('subject_id', this.subjectId);
+            }
+
+            try {
+                this.statusMessage = 'Validating CSV data...';
+                const response = await fetch(this.previewUrl, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': this.csrfToken(),
+                    },
+                    body,
+                });
+                const data = await response.json().catch(() => ({}));
+
+                this.rowErrors = data.rowErrors || [];
+                this.stats = data.stats || {};
+                this.previewRows = data.preview || [];
+                this.previewToken = data.token || null;
+                this.pendingQuestions = data.questions || [];
+
+                if (!response.ok) {
+                    window.appToast(data.message || 'Unable to preview this CSV file.', 'error');
+                    this.statusMessage = 'Validation failed. Please review the errors and try again.';
+                    return;
+                }
+
+                this.statusMessage = '';
+                this.previewOpen = true;
+            } catch (error) {
+                window.appToast('Unable to preview the CSV file.', 'error');
+                this.statusMessage = 'Validation failed. Please review the errors and try again.';
+            } finally {
+                this.busy = false;
+            }
+        },
+        openConfirm() {
+            this.previewOpen = false;
+            this.confirmOpen = true;
+        },
+        async confirmImport() {
+            if (!this.previewToken || this.confirming) {
+                return;
+            }
+
+            this.confirming = true;
+            this.statusMessage = 'Importing records...';
+
+            try {
+                const payload = {
+                    token: this.previewToken,
+                    import_mode: this.bankModes ? this.bankImportMode : this.importMode,
+                };
+
+                if (this.bankModes) {
+                    payload.subject_id = this.subjectId;
+                }
+
+                const response = await fetch(this.confirmUrl, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': this.csrfToken(),
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    window.appToast(data.message || 'Import failed.', 'error');
+                    this.statusMessage = 'Import failed. Please review the errors and try again.';
+                    return;
+                }
+
+                this.confirmOpen = false;
+                this.statusMessage = data.message || `Successfully imported ${this.stats.valid || 0} record(s).`;
+                window.appToast(this.statusMessage, 'success');
+
+                this.$dispatch('csv-imported', {
+                    questions: data.questions || this.pendingQuestions,
+                    importMode: this.bankModes ? this.bankImportMode : this.importMode,
+                    counts: data.counts || null,
+                });
+
+                if (this.bankModes) {
+                    setTimeout(() => window.location.reload(), 600);
+                } else {
+                    this.clearFile();
+                }
+            } catch (error) {
+                window.appToast('Import failed. Please try again.', 'error');
+                this.statusMessage = 'Import failed. Please review the errors and try again.';
+            } finally {
+                this.confirming = false;
+            }
+        },
+        async downloadErrorReport() {
+            if (!this.selectedFile || !this.errorReportUrl) {
+                return;
+            }
+
+            const body = new FormData();
+            body.append('file', this.selectedFile);
+            if (this.subjectId) {
+                body.append('subject_id', this.subjectId);
+            }
+
+            try {
+                const response = await fetch(this.errorReportUrl, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'text/csv',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': this.csrfToken(),
+                    },
+                    body,
+                });
+
+                if (!response.ok) {
+                    window.appToast('No import errors to download.', 'warning');
+                    return;
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `import-errors-${new Date().toISOString().slice(0, 10)}.csv`;
+                link.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                window.appToast('Unable to download the error report.', 'error');
+            }
+        },
+    };
+};
+
+window.questionBankPage = function questionBankPage(config = {}) {
+    return {
+        exportUrl: config.exportUrl || '',
+        filters: config.filters || {},
+        exportFormat: 'csv',
+        exportScope: 'filtered',
+        exporting: false,
+        exportCsv() {
+            if (!this.exportUrl || this.exporting) {
+                return;
+            }
+
+            this.exporting = true;
+            const params = new URLSearchParams({
+                scope: this.exportScope,
+            });
+
+            if (this.exportScope === 'filtered') {
+                Object.entries(this.filters).forEach(([key, value]) => {
+                    if (value) {
+                        params.set(key, value);
+                    }
+                });
+            }
+
+            window.location.href = `${this.exportUrl}?${params.toString()}`;
+            setTimeout(() => {
+                this.exporting = false;
+            }, 1200);
+        },
+    };
+};
+
 window.examWizard = function examWizard(config = {}) {
     const incomingForm = config.form || {};
 
@@ -97,9 +364,7 @@ window.examWizard = function examWizard(config = {}) {
         sectionQuery: '',
         sectionMenuOpen: false,
         sectionAbort: null,
-        importingQuestions: false,
         importMode: 'append',
-        importErrors: [],
         errors: config.errors || {},
         steps: [
             { id: 1, key: '01', label: 'Information' },
@@ -108,7 +373,9 @@ window.examWizard = function examWizard(config = {}) {
             { id: 4, key: '04', label: 'Schedule' },
             { id: 5, key: '05', label: 'Review' },
         ],
-        questions: [
+        questions: Array.isArray(config.questions)
+            ? config.questions
+            : [
             {
                 id: 1,
                 type: 'multiple_choice',
@@ -354,7 +621,20 @@ window.examWizard = function examWizard(config = {}) {
                 start_time: this.form.start || null,
                 end_time: this.form.end || null,
                 status,
+                questions: this.questions.map(({ id, ...question }) => question),
             };
+        },
+        handleCsvImported(detail = {}) {
+            const imported = this.assignImportedQuestionIds(detail.questions || []);
+            const mode = detail.importMode || this.importMode;
+
+            if (mode === 'replace') {
+                this.questions = imported;
+            } else {
+                this.questions.push(...imported);
+            }
+
+            window.appToast(`${imported.length} question(s) added to this examination.`);
         },
         firstError(errors) {
             const bag = errors || this.errors;
@@ -452,69 +732,6 @@ window.examWizard = function examWizard(config = {}) {
                 ...question,
                 id: nextId++,
             }));
-        },
-        async importQuestionsFromCsv(event) {
-            const input = event.target;
-            const file = input.files?.[0];
-
-            input.value = '';
-
-            if (!file) {
-                return;
-            }
-
-            if (!this.importQuestionsUrl) {
-                window.appToast('CSV import is unavailable.', 'error');
-                return;
-            }
-
-            this.importingQuestions = true;
-            this.importErrors = [];
-
-            const body = new FormData();
-            body.append('file', file);
-
-            try {
-                const response = await fetch(this.importQuestionsUrl, {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': this.csrfToken(),
-                    },
-                    body,
-                });
-
-                const data = await response.json().catch(() => ({}));
-
-                if (response.status === 422) {
-                    this.importErrors = data.errors || [data.message || 'Unable to import questions from this CSV file.'];
-                    window.appToast(this.importErrors[0] || 'Import failed.', 'error');
-                    return;
-                }
-
-                if (!response.ok) {
-                    window.appToast(data.message || 'Unable to import questions.', 'error');
-                    return;
-                }
-
-                const imported = this.assignImportedQuestionIds(data.questions || []);
-
-                if (this.importMode === 'replace') {
-                    this.questions = imported;
-                } else {
-                    this.questions.push(...imported);
-                }
-
-                this.importErrors = data.errors || [];
-
-                const message = data.message || `${imported.length} question(s) imported.`;
-                window.appToast(message, this.importErrors.length ? 'warning' : 'success');
-            } catch (error) {
-                window.appToast('Unable to import questions.', 'error');
-            } finally {
-                this.importingQuestions = false;
-            }
         },
         createQuestion(overrides = {}) {
             return {

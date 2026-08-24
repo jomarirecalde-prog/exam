@@ -23,7 +23,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/examinations/create', [\App\Http\Controllers\ExaminationController::class, 'create'])->name('examinations.create');
         Route::post('/examinations', [\App\Http\Controllers\ExaminationController::class, 'store'])->name('examinations.store');
         Route::get('/examinations/available-sections', [\App\Http\Controllers\ExaminationController::class, 'availableSections'])->name('examinations.sections');
+        Route::post('/examinations/preview-questions-csv', [\App\Http\Controllers\ExaminationController::class, 'previewQuestionsCsv'])->name('examinations.preview-questions-csv');
         Route::post('/examinations/import-questions', [\App\Http\Controllers\ExaminationController::class, 'importQuestions'])->name('examinations.import-questions');
+        Route::post('/examinations/questions/csv-error-report', [\App\Http\Controllers\ExaminationController::class, 'questionCsvErrorReport'])->name('examinations.question-csv-error-report');
         Route::get('/examinations/questions/csv-template', [\App\Http\Controllers\ExaminationController::class, 'questionCsvTemplate'])->name('examinations.question-csv-template');
         Route::get('/examinations/{examination}/edit', [\App\Http\Controllers\ExaminationController::class, 'edit'])->name('examinations.edit');
         Route::put('/examinations/{examination}', [\App\Http\Controllers\ExaminationController::class, 'update'])->name('examinations.update');
@@ -31,7 +33,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/examinations/{examination}/take', [PlatformController::class, 'take'])->name('examinations.take');
     Route::get('/examinations/{examination}/result', [PlatformController::class, 'result'])->name('examinations.result');
 
-    Route::get('/question-bank', [PlatformController::class, 'questions'])->name('questions.index');
+    Route::middleware('role:superadmin,admin,instructor')->group(function () {
+        Route::get('/question-bank', [\App\Http\Controllers\QuestionController::class, 'index'])->name('questions.index');
+        Route::get('/question-bank/csv-template', [\App\Http\Controllers\QuestionController::class, 'csvTemplate'])->name('questions.csv-template');
+        Route::post('/question-bank/preview-csv', [\App\Http\Controllers\QuestionController::class, 'previewCsv'])->name('questions.preview-csv');
+        Route::post('/question-bank/import-csv', [\App\Http\Controllers\QuestionController::class, 'importCsv'])->name('questions.import-csv');
+        Route::get('/question-bank/export-csv', [\App\Http\Controllers\QuestionController::class, 'exportCsv'])->name('questions.export-csv');
+        Route::post('/question-bank/error-report', [\App\Http\Controllers\QuestionController::class, 'errorReport'])->name('questions.error-report');
+    });
     Route::get('/schedules', [PlatformController::class, 'schedules'])->name('schedules.index');
 
     Route::get('/results', [PlatformController::class, 'results'])->name('results.index');
