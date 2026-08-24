@@ -24,6 +24,7 @@ use App\Models\Subject;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\YearLevel;
+use App\Support\YearLevelDefaults;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
@@ -135,11 +136,12 @@ class DatabaseSeeder extends Seeder
             'name' => 'Bachelor of Science in Information Systems',
         ]);
 
-        $yearLevel = YearLevel::create([
-            'program_id' => $program->id,
-            'name' => '1st Year',
-            'level' => 1,
-        ]);
+        YearLevelDefaults::ensureForProgram($program);
+
+        $yearLevel = YearLevel::query()
+            ->where('program_id', $program->id)
+            ->where('level', 1)
+            ->firstOrFail();
 
         $section = Section::create([
             'program_id' => $program->id,

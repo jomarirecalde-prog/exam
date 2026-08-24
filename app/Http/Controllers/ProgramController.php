@@ -6,6 +6,7 @@ use App\Http\Requests\StoreProgramRequest;
 use App\Http\Requests\UpdateProgramRequest;
 use App\Models\Department;
 use App\Models\Program;
+use App\Support\YearLevelDefaults;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -43,6 +44,7 @@ class ProgramController extends Controller
     public function store(StoreProgramRequest $request): RedirectResponse
     {
         $program = Program::create($request->validated());
+        YearLevelDefaults::ensureForProgram($program);
 
         return redirect()
             ->route('programs.show', $program)
