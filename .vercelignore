@@ -1,0 +1,12 @@
+/vendor
+/node_modules
+/public/build
+/.git
+/.idea
+/.vscode
+/tests
+.phpunit.result.cache
+/storage/logs
+/storage/pail
+Homestead.json
+Homestead.yaml

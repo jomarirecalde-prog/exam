@@ -21,9 +21,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureForVercel();
+
         date_default_timezone_set(config('examination.timezone', 'Asia/Manila'));
 
         if ($root = config('app.url')) {
+            if (getenv('VERCEL') === '1') {
+                $root = preg_replace('#^http://#i', 'https://', $root);
+                URL::forceScheme('https');
+            }
+
             URL::forceRootUrl($root);
         }
 
@@ -76,5 +83,30 @@ class AppServiceProvider extends ServiceProvider
                 $html
             ));
         });
+    }
+
+    protected function configureForVercel(): void
+    {
+        if (getenv('VERCEL') !== '1') {
+            return;
+        }
+
+        $tmpStorage = '/tmp/storage';
+
+        foreach (['framework/cache/data', 'framework/sessions', 'framework/views', 'logs'] as $dir) {
+            $path = $tmpStorage.'/'.$dir;
+
+            if (! is_dir($path)) {
+                mkdir($path, 0755, true);
+            }
+        }
+
+        config([
+            'logging.default' => 'stderr',
+            'logging.channels.stack.channels' => ['stderr'],
+            'filesystems.disks.local.root' => $tmpStorage,
+        ]);
+
+        app()->useStoragePath($tmpStorage);
     }
 }

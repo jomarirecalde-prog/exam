@@ -1,0 +1,62 @@
+{
+    "version": 2,
+    "framework": null,
+    "installCommand": "npm ci",
+    "buildCommand": "npm run build",
+    "outputDirectory": ".",
+    "builds": [
+        {
+            "src": "package.json",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "."
+            }
+        },
+        {
+            "src": "api/migrate.php",
+            "use": "vercel-php@0.6.2"
+        },
+        {
+            "src": "api/index.php",
+            "use": "vercel-php@0.6.2"
+        },
+        {
+            "src": "public/**",
+            "use": "@vercel/static"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/migrate.php",
+            "dest": "/api/migrate.php"
+        },
+        {
+            "src": "/build/(.*)",
+            "dest": "/public/build/$1"
+        },
+        {
+            "src": "/(.*\\.(css|js|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|webp|map))",
+            "dest": "/public/$1"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/api/index.php"
+        }
+    ],
+    "env": {
+        "APP_CONFIG_CACHE": "/tmp/config.php",
+        "APP_EVENTS_CACHE": "/tmp/events.php",
+        "APP_PACKAGES_CACHE": "/tmp/packages.php",
+        "APP_ROUTES_CACHE": "/tmp/routes.php",
+        "APP_SERVICES_CACHE": "/tmp/services.php",
+        "VIEW_COMPILED_PATH": "/tmp/views",
+        "LOG_CHANNEL": "stderr",
+        "CACHE_STORE": "database",
+        "CACHE_DRIVER": "database",
+        "SESSION_DRIVER": "database",
+        "QUEUE_CONNECTION": "database",
+        "MAIL_MAILER": "log",
+        "BROADCAST_CONNECTION": "log",
+        "FILESYSTEM_DISK": "local"
+    }
+}
