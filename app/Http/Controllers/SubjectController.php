@@ -4,10 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSubjectRequest;
 use App\Http\Requests\UpdateSubjectRequest;
+use App\Models\AcademicYear;
 use App\Models\Department;
+use App\Models\Instructor;
+use App\Models\Section;
+use App\Models\Semester;
 use App\Models\Subject;
+use App\Services\Students\AcademicLookupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class SubjectController extends Controller
@@ -42,7 +48,26 @@ class SubjectController extends Controller
 
     public function store(StoreSubjectRequest $request): RedirectResponse
     {
-        $subject = Subject::create($request->validated());
+        $subject = DB::transaction(function () use ($request) {
+            $subject = Subject::create($request->safe()->only([
+                'code',
+                'name',
+                'description',
+                'department_id',
+                'units',
+                'is_active',
+            ]));
+
+            if ($request->filled('instructor_id')) {
+                $subject->instructors()->attach($request->input('instructor_id'), [
+                    'section_id' => $request->input('section_id'),
+                    'academic_year_id' => $request->input('academic_year_id'),
+                    'semester_id' => $request->input('semester_id'),
+                ]);
+            }
+
+            return $subject;
+        });
 
         return redirect()
             ->route('subjects.show', $subject)
@@ -53,7 +78,33 @@ class SubjectController extends Controller
     {
         $subject->load('department');
 
-        return view('pages.subjects.show', compact('subject'));
+        $instructorAssignments = $subject->instructors()
+            ->with('user')
+            ->withPivot(['section_id', 'academic_year_id', 'semester_id'])
+            ->get();
+
+        $sections = Section::query()
+            ->whereIn('id', $instructorAssignments->pluck('pivot.section_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+
+        $academicYears = AcademicYear::query()
+            ->whereIn('id', $instructorAssignments->pluck('pivot.academic_year_id')->unique())
+            ->get()
+            ->keyBy('id');
+
+        $semesters = Semester::query()
+            ->whereIn('id', $instructorAssignments->pluck('pivot.semester_id')->unique())
+            ->get()
+            ->keyBy('id');
+
+        return view('pages.subjects.show', compact(
+            'subject',
+            'instructorAssignments',
+            'sections',
+            'academicYears',
+            'semesters',
+        ));
     }
 
     public function edit(Subject $subject): View
@@ -84,8 +135,25 @@ class SubjectController extends Controller
 
     protected function formOptions(): array
     {
+        $lookup = app(AcademicLookupService::class);
+        $currentYear = $lookup->currentAcademicYear();
+        $currentSemester = $lookup->currentSemester($currentYear);
+
         return [
             'departments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
+            'instructors' => Instructor::query()
+                ->with('user')
+                ->where('is_active', true)
+                ->orderBy('employee_id')
+                ->get(),
+            'academicYears' => AcademicYear::query()->orderByDesc('is_current')->orderByDesc('name')->get(),
+            'semesters' => Semester::query()->orderBy('order')->get(['id', 'academic_year_id', 'name']),
+            'sections' => Section::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'academic_year_id', 'semester_id']),
+            'defaultAcademicYearId' => $currentYear?->id,
+            'defaultSemesterId' => $currentSemester?->id,
         ];
     }
 }

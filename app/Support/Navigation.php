@@ -66,6 +66,9 @@ class Navigation
             'subjects.create' => [['Academic'], ['Subjects', 'subjects.index'], ['Create Subject']],
             'subjects.show' => [['Academic'], ['Subjects', 'subjects.index'], ['Details']],
             'subjects.edit' => [['Academic'], ['Subjects', 'subjects.index'], ['Edit']],
+            'instructor.teaching.index' => [['My Classes']],
+            'instructor.teaching.show' => [['My Classes', 'instructor.teaching.index'], ['Subject']],
+            'instructor.teaching.section' => [['My Classes', 'instructor.teaching.index'], ['Section Roster']],
             'examinations.index' => [['Examinations'], ['All Examinations']],
             'examinations.create' => [['Examinations', 'examinations.index'], ['Create Examination']],
             'examinations.edit' => [['Examinations', 'examinations.index'], ['Edit Examination']],
@@ -109,6 +112,10 @@ class Navigation
                 ],
             ],
         ];
+
+        if ($user->hasRole('instructor')) {
+            $groups[0]['items'][] = ['label' => 'My Classes', 'route' => 'instructor.teaching.index', 'icon' => 'book-open'];
+        }
 
         if ($user->hasAnyRole(['superadmin', 'admin'])) {
             $groups[] = [

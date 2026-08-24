@@ -9,6 +9,7 @@ use App\Models\ExaminationAttempt;
 use App\Models\Grade;
 use App\Models\Instructor;
 use App\Models\Student;
+use App\Services\Instructors\InstructorTeachingService;
 use App\Support\Navigation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +34,7 @@ class DashboardController extends Controller
         }
 
         if ($user->hasRole('instructor')) {
-            return view('dashboards.instructor', $payload);
+            return view('dashboards.instructor', array_merge($payload, $this->instructorPayload($user)));
         }
 
         if ($user->hasRole('student')) {
@@ -107,6 +108,40 @@ class DashboardController extends Controller
                 ->selectRaw('status, count(*) as total')
                 ->groupBy('status')
                 ->pluck('total', 'status'),
+        ];
+    }
+
+    protected function instructorPayload($user): array
+    {
+        $instructor = $user->instructor;
+        $teachingAssignments = $instructor
+            ? app(InstructorTeachingService::class)->assignments($instructor)->take(5)
+            : collect();
+
+        $upcomingExams = $instructor
+            ? Examination::query()
+                ->with(['subject', 'section'])
+                ->where('instructor_id', $instructor->id)
+                ->whereNotIn('status', [ExamStatus::Closed, ExamStatus::Archived])
+                ->orderBy('examination_date')
+                ->limit(6)
+                ->get()
+            : collect();
+
+        return [
+            'teachingAssignments' => $teachingAssignments,
+            'upcomingExams' => $upcomingExams,
+            'counts' => [
+                'assignedSubjects' => $teachingAssignments->count(),
+                'assignedSections' => $teachingAssignments->sum('section_count'),
+                'assignedStudents' => $teachingAssignments->sum('student_count'),
+                'activeExams' => $instructor
+                    ? Examination::query()
+                        ->where('instructor_id', $instructor->id)
+                        ->where('status', ExamStatus::Active)
+                        ->count()
+                    : 0,
+            ],
         ];
     }
 }

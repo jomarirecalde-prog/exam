@@ -47,6 +47,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/examinations', [PlatformController::class, 'examinations'])->name('examinations.index');
     Route::middleware('role:superadmin,admin,instructor')->group(function () {
+        Route::get('/my-classes', [\App\Http\Controllers\InstructorTeachingController::class, 'index'])->name('instructor.teaching.index');
+        Route::get('/my-classes/{subject}', [\App\Http\Controllers\InstructorTeachingController::class, 'show'])->name('instructor.teaching.show');
+        Route::get('/my-classes/{subject}/sections/{section}', [\App\Http\Controllers\InstructorTeachingController::class, 'section'])->name('instructor.teaching.section');
+
         Route::get('/examinations/create', [\App\Http\Controllers\ExaminationController::class, 'create'])->name('examinations.create');
         Route::post('/examinations', [\App\Http\Controllers\ExaminationController::class, 'store'])->name('examinations.store');
         Route::get('/examinations/available-sections', [\App\Http\Controllers\ExaminationController::class, 'availableSections'])->name('examinations.sections');

@@ -26,4 +26,11 @@ class Subject extends Model
             ->withPivot(['academic_year_id', 'semester_id'])
             ->withTimestamps();
     }
+
+    public function instructors(): BelongsToMany
+    {
+        return $this->belongsToMany(Instructor::class, 'subject_instructor')
+            ->withPivot(['section_id', 'academic_year_id', 'semester_id'])
+            ->withTimestamps();
+    }
 }

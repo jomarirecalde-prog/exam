@@ -5,7 +5,7 @@
         <x-ui.card class="max-w-3xl">
             <form method="post" action="{{ route('subjects.store') }}" class="space-y-8">
                 @csrf
-                @include('pages.subjects._form', ['departments' => $departments])
+                @include('pages.subjects._form')
 
                 <div class="flex flex-wrap gap-2 border-t border-line pt-6">
                     <x-primary-button>Save Subject</x-primary-button>
