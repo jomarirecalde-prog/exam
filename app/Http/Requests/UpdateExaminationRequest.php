@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\ExaminationAccessMode;
 use App\Enums\ExaminationPeriod;
 use App\Enums\ExamStatus;
 use App\Models\Examination;
@@ -36,8 +37,11 @@ class UpdateExaminationRequest extends FormRequest
                 'required',
                 Rule::exists('year_levels', 'id')->where('program_id', $this->integer('program_id')),
             ],
-            'section_ids' => ['required', 'array', 'min:1'],
+            'section_ids' => ['nullable', 'array'],
             'section_ids.*' => ['required', 'integer', 'distinct', 'exists:sections,id'],
+            'access_mode' => ['required', Rule::enum(ExaminationAccessMode::class)],
+            'student_ids' => ['nullable', 'array'],
+            'student_ids.*' => ['required', 'integer', 'distinct', 'exists:students,id'],
             'examination_period' => ['required', Rule::enum(ExaminationPeriod::class)],
             'duration_minutes' => ['required', 'integer', 'min:1', 'max:600'],
             'passing_percentage' => ['required', 'numeric', 'min:1', 'max:100'],
@@ -83,15 +87,33 @@ class UpdateExaminationRequest extends FormRequest
             }
 
             $service = app(ExaminationSectionService::class);
-            $service->assertAssignable(
-                $this->user(),
-                $this->input('section_ids', []),
-                $this->integer('academic_year_id'),
-                $this->integer('semester_id'),
-                $this->integer('subject_id'),
-                $this->integer('program_id'),
-                $this->integer('year_level_id'),
-            );
+            $accessMode = $this->input('access_mode', ExaminationAccessMode::SubjectAndSections->value);
+            $sectionIds = $this->input('section_ids', []);
+            $studentIds = $this->input('student_ids', []);
+
+            if ($accessMode === ExaminationAccessMode::SubjectAndSections->value && $sectionIds === []) {
+                $validator->errors()->add('section_ids', 'Please select at least one section for this access mode.');
+            }
+
+            if ($accessMode === ExaminationAccessMode::SpecificStudents->value && $studentIds === []) {
+                $validator->errors()->add('student_ids', 'Please select at least one student for this access mode.');
+            }
+
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            if ($sectionIds !== []) {
+                $service->assertAssignable(
+                    $this->user(),
+                    $sectionIds,
+                    $this->integer('academic_year_id'),
+                    $this->integer('semester_id'),
+                    $this->integer('subject_id'),
+                    $this->integer('program_id'),
+                    $this->integer('year_level_id'),
+                );
+            }
 
             $examination = $this->route('examination');
 
@@ -123,6 +145,8 @@ class UpdateExaminationRequest extends FormRequest
     {
         $this->merge([
             'section_ids' => array_values(array_unique(array_filter((array) $this->input('section_ids', [])))),
+            'student_ids' => array_values(array_unique(array_filter(array_map('intval', (array) $this->input('student_ids', []))))),
+            'access_mode' => $this->input('access_mode', ExaminationAccessMode::SubjectAndSections->value),
             'randomize_questions' => $this->boolean('randomize_questions'),
             'allow_back_navigation' => $this->boolean('allow_back_navigation'),
             'auto_submit_on_expire' => $this->boolean('auto_submit_on_expire'),

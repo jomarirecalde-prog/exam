@@ -8,9 +8,12 @@ use App\Models\Department;
 use App\Models\Program;
 use App\Models\Section;
 use App\Models\Student;
+use App\Models\StudentSubject;
+use App\Models\Subject;
 use App\Models\YearLevel;
 use App\Services\AuditLogger;
 use App\Services\Students\StudentRegistrationService;
+use App\Services\Students\StudentSubjectEnrollmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -19,6 +22,7 @@ class AdminStudentRegistrationController extends Controller
 {
     public function __construct(
         protected StudentRegistrationService $registrations,
+        protected StudentSubjectEnrollmentService $subjectEnrollments,
         protected AuditLogger $audit,
     ) {
     }
@@ -73,9 +77,23 @@ class AdminStudentRegistrationController extends Controller
     {
         abort_unless($student->registered_at !== null, 404);
 
-        $student->load(['user', 'program.department', 'yearLevel', 'section', 'approver']);
+        $student->load([
+            'user',
+            'program.department',
+            'yearLevel',
+            'section.academicYear',
+            'section.semester',
+            'approver',
+            'subjectEnrollments.subject',
+            'subjectEnrollments.academicYear',
+            'subjectEnrollments.semester',
+        ]);
 
-        return view('pages.admin.student-registrations.show', compact('student'));
+        return view('pages.admin.student-registrations.show', [
+            'student' => $student,
+            'subjectVerificationRequired' => $this->subjectEnrollments->subjectVerificationRequired(),
+            'availableSubjects' => Subject::query()->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']),
+        ]);
     }
 
     public function approve(Request $request, Student $student): RedirectResponse
@@ -117,5 +135,64 @@ class AdminStudentRegistrationController extends Controller
         return redirect()
             ->route('admin.student-registrations.show', $student)
             ->with('status', 'Student registration rejected.');
+    }
+
+    public function verifyAllSubjects(Request $request, Student $student): RedirectResponse
+    {
+        $count = $this->subjectEnrollments->verifyAllForStudent($student, $request->user());
+
+        return redirect()
+            ->route('admin.student-registrations.show', $student)
+            ->with('status', "{$count} subject enrollment(s) verified.");
+    }
+
+    public function verifySubject(Request $request, Student $student, StudentSubject $enrollment): RedirectResponse
+    {
+        abort_unless((int) $enrollment->student_id === (int) $student->id, 404);
+
+        $this->subjectEnrollments->verifyEnrollment($enrollment, $request->user());
+
+        return redirect()
+            ->route('admin.student-registrations.show', $student)
+            ->with('status', 'Subject enrollment verified.');
+    }
+
+    public function rejectSubject(Request $request, Student $student, StudentSubject $enrollment): RedirectResponse
+    {
+        abort_unless((int) $enrollment->student_id === (int) $student->id, 404);
+
+        $data = $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $this->subjectEnrollments->rejectEnrollment($enrollment, $request->user(), $data['rejection_reason'] ?? null);
+
+        return redirect()
+            ->route('admin.student-registrations.show', $student)
+            ->with('status', 'Subject enrollment rejected.');
+    }
+
+    public function addSubject(Request $request, Student $student): RedirectResponse
+    {
+        $data = $request->validate([
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+        ]);
+
+        $this->subjectEnrollments->addEnrollment($student, (int) $data['subject_id'], $request->user());
+
+        return redirect()
+            ->route('admin.student-registrations.show', $student)
+            ->with('status', 'Subject added to student enrollment.');
+    }
+
+    public function removeSubject(Request $request, Student $student, StudentSubject $enrollment): RedirectResponse
+    {
+        abort_unless((int) $enrollment->student_id === (int) $student->id, 404);
+
+        $this->subjectEnrollments->removeEnrollment($enrollment, $request->user());
+
+        return redirect()
+            ->route('admin.student-registrations.show', $student)
+            ->with('status', 'Subject removed from student enrollment.');
     }
 }

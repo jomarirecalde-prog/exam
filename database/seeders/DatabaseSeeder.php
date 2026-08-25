@@ -102,6 +102,7 @@ class DatabaseSeeder extends Seeder
             ['key' => 'timezone', 'value' => 'Asia/Manila', 'type' => 'string', 'group' => 'general'],
             ['key' => 'default_passing_percentage', 'value' => '75', 'type' => 'float', 'group' => 'examination'],
             ['key' => 'default_duration_minutes', 'value' => '60', 'type' => 'integer', 'group' => 'examination'],
+            ['key' => 'subject_verification_required', 'value' => 'true', 'type' => 'boolean', 'group' => 'registration'],
         ];
 
         foreach ($settings as $setting) {

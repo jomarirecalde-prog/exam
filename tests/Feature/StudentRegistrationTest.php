@@ -2,19 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ExaminationAccessMode;
+use App\Enums\ExamStatus;
 use App\Enums\StudentRegistrationStatus;
+use App\Enums\StudentSubjectEnrollmentStatus;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
 use App\Models\Department;
+use App\Models\Examination;
 use App\Models\Program;
 use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Student;
+use App\Models\StudentSubject;
+use App\Models\Subject;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Notifications\NewStudentRegistrationNotification;
 use App\Notifications\StudentRegistrationApprovedNotification;
+use App\Services\Examinations\ExaminationAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
@@ -47,7 +55,8 @@ class StudentRegistrationTest extends TestCase
         $this->get(route('student-registration.create'))
             ->assertOk()
             ->assertSee('Create Student Account')
-            ->assertSee('Personal Information');
+            ->assertSee('Personal Information')
+            ->assertSee('Select Your Enrolled Subjects');
     }
 
     public function test_student_can_register_with_valid_data(): void
@@ -66,10 +75,21 @@ class StudentRegistrationTest extends TestCase
         $this->assertFalse($student->user->is_active);
         $this->assertTrue($student->user->hasRole(UserRole::Student->value));
         $this->assertTrue(Hash::check('Password123!', $student->user->password));
+        $this->assertCount(2, $student->subjectEnrollments);
 
         $response->assertRedirect(route('student-registration.confirmation', ['student' => $student->id]));
 
         Notification::assertSentTo($admin, NewStudentRegistrationNotification::class);
+    }
+
+    public function test_registration_requires_at_least_one_subject(): void
+    {
+        $structure = $this->academicStructure();
+        $payload = $this->registrationPayload($structure);
+        $payload['subject_ids'] = [];
+
+        $this->post(route('student-registration.store'), $payload)
+            ->assertSessionHasErrors(['subject_ids']);
     }
 
     public function test_duplicate_student_id_is_rejected(): void
@@ -112,6 +132,16 @@ class StudentRegistrationTest extends TestCase
             ->assertSessionHasErrors(['section_id']);
     }
 
+    public function test_manipulated_subject_ids_are_rejected(): void
+    {
+        $structure = $this->academicStructure();
+        $payload = $this->registrationPayload($structure);
+        $payload['subject_ids'] = [99999];
+
+        $this->post(route('student-registration.store'), $payload)
+            ->assertSessionHasErrors(['subject_ids.0']);
+    }
+
     public function test_pending_student_cannot_sign_in(): void
     {
         $structure = $this->academicStructure();
@@ -146,7 +176,8 @@ class StudentRegistrationTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.student-registrations.show', $student))
             ->assertOk()
-            ->assertSee('Approve');
+            ->assertSee('Approve')
+            ->assertSee('Declared Subject Enrollment');
 
         $this->actingAs($admin)
             ->post(route('admin.student-registrations.approve', $student))
@@ -189,6 +220,25 @@ class StudentRegistrationTest extends TestCase
         $this->assertSame('Invalid documents submitted.', $student->rejection_reason);
     }
 
+    public function test_admin_can_verify_subject_enrollment(): void
+    {
+        $structure = $this->academicStructure();
+        $admin = $this->admin();
+
+        $this->post(route('student-registration.store'), $this->registrationPayload($structure));
+        $student = Student::query()->where('student_id', '2026-9999')->firstOrFail();
+        $enrollment = $student->subjectEnrollments()->firstOrFail();
+
+        $this->actingAs($admin)
+            ->post(route('admin.student-registrations.subjects.verify', [$student, $enrollment]))
+            ->assertRedirect(route('admin.student-registrations.show', $student));
+
+        $this->assertSame(
+            StudentSubjectEnrollmentStatus::Verified,
+            $enrollment->fresh()->status,
+        );
+    }
+
     public function test_sections_lookup_returns_filtered_sections(): void
     {
         $structure = $this->academicStructure();
@@ -201,12 +251,106 @@ class StudentRegistrationTest extends TestCase
             ->assertJsonFragment(['id' => $structure['section']->id]);
     }
 
+    public function test_subjects_lookup_returns_recommended_and_other_subjects(): void
+    {
+        $structure = $this->academicStructure();
+
+        $this->getJson(route('student-registration.subjects', [
+            'section_id' => $structure['section']->id,
+            'department_id' => $structure['department']->id,
+            'program_id' => $structure['program']->id,
+            'year_level_id' => $structure['yearLevel']->id,
+        ]))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $structure['subjects'][0]->id]);
+    }
+
+    public function test_student_cannot_access_exam_without_subject_enrollment(): void
+    {
+        $structure = $this->academicStructure();
+        $student = $this->approvedStudent($structure, [$structure['subjects'][0]->id]);
+
+        $exam = Examination::create([
+            'title' => 'IS 103 Exam',
+            'subject_id' => $structure['subjects'][1]->id,
+            'academic_year_id' => $structure['year']->id,
+            'semester_id' => $structure['semester']->id,
+            'examination_period' => 'MIDTERM',
+            'duration_minutes' => 60,
+            'passing_percentage' => 75,
+            'status' => ExamStatus::Published,
+            'access_mode' => ExaminationAccessMode::SubjectOnly,
+        ]);
+
+        $service = app(ExaminationAccessService::class);
+
+        $this->assertFalse($service->canTake($student->user, $exam));
+    }
+
+    public function test_student_can_access_exam_when_enrolled_in_subject(): void
+    {
+        $structure = $this->academicStructure();
+        $student = $this->approvedStudent($structure, [$structure['subjects'][0]->id]);
+
+        StudentSubject::query()
+            ->where('student_id', $student->id)
+            ->update([
+                'status' => StudentSubjectEnrollmentStatus::Verified,
+                'verified_at' => now(),
+            ]);
+
+        $exam = Examination::create([
+            'title' => 'IS 101 Exam',
+            'subject_id' => $structure['subjects'][0]->id,
+            'academic_year_id' => $structure['year']->id,
+            'semester_id' => $structure['semester']->id,
+            'examination_period' => 'MIDTERM',
+            'duration_minutes' => 60,
+            'passing_percentage' => 75,
+            'status' => ExamStatus::Published,
+            'access_mode' => ExaminationAccessMode::SubjectOnly,
+        ]);
+
+        $service = app(ExaminationAccessService::class);
+
+        $this->assertTrue($service->canTake($student->user, $exam));
+    }
+
     protected function admin(): User
     {
         $admin = User::factory()->create(['is_active' => true, 'email' => 'admin@exam.local']);
         $admin->assignRole(UserRole::Admin->value);
 
         return $admin;
+    }
+
+    protected function approvedStudent(array $structure, array $subjectIds): Student
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $user->assignRole(UserRole::Student->value);
+
+        $student = Student::create([
+            'user_id' => $user->id,
+            'student_id' => '2026-1001',
+            'program_id' => $structure['program']->id,
+            'year_level_id' => $structure['yearLevel']->id,
+            'section_id' => $structure['section']->id,
+            'registration_status' => StudentRegistrationStatus::Approved,
+            'registered_at' => now(),
+            'is_active' => true,
+        ]);
+
+        foreach ($subjectIds as $subjectId) {
+            StudentSubject::create([
+                'student_id' => $student->id,
+                'subject_id' => $subjectId,
+                'academic_year_id' => $structure['year']->id,
+                'semester_id' => $structure['semester']->id,
+                'status' => StudentSubjectEnrollmentStatus::PendingVerification,
+            ]);
+        }
+
+        return $student->fresh(['user']);
     }
 
     /**
@@ -229,6 +373,7 @@ class StudentRegistrationTest extends TestCase
             'program_id' => $structure['program']->id,
             'year_level_id' => $structure['yearLevel']->id,
             'section_id' => $structure['section']->id,
+            'subject_ids' => collect($structure['subjects'])->pluck('id')->all(),
             'password' => 'Password123!',
             'password_confirmation' => 'Password123!',
         ];
@@ -285,7 +430,31 @@ class StudentRegistrationTest extends TestCase
             'is_active' => true,
         ]);
 
-        return compact('year', 'semester', 'department', 'program', 'yearLevel', 'section');
+        $subjects = collect([
+            ['code' => 'IS 101', 'name' => 'Fundamentals of Information Systems'],
+            ['code' => 'IS 103', 'name' => 'Database Management Systems'],
+        ])->map(fn (array $data) => Subject::create([
+            'department_id' => $department->id,
+            'code' => $data['code'],
+            'name' => $data['name'],
+            'units' => 3,
+            'is_active' => true,
+        ]));
+
+        foreach ($subjects as $subject) {
+            DB::table('subject_section')->insert([
+                'subject_id' => $subject->id,
+                'section_id' => $section->id,
+                'academic_year_id' => $year->id,
+                'semester_id' => $semester->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return compact('year', 'semester', 'department', 'program', 'yearLevel', 'section') + [
+            'subjects' => $subjects->all(),
+        ];
     }
 
     /**

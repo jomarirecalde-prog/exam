@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ExaminationAccessMode;
 use App\Enums\ExaminationPeriod;
 use App\Enums\ExamStatus;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,13 +23,14 @@ class Examination extends Model
         'academic_year_id', 'semester_id', 'examination_period', 'title',
         'description', 'instructions', 'duration_minutes', 'total_items',
         'passing_score', 'passing_percentage', 'examination_date',
-        'start_time', 'end_time', 'status', 'needs_section_review', 'current_version',
+        'start_time', 'end_time', 'status', 'needs_section_review', 'access_mode', 'current_version',
     ];
 
     protected function casts(): array
     {
         return [
             'examination_period' => ExaminationPeriod::class,
+            'access_mode' => ExaminationAccessMode::class,
             'status' => ExamStatus::class,
             'examination_date' => 'date',
             'passing_score' => 'decimal:2',
@@ -102,6 +104,12 @@ class Examination extends Model
         return $this->hasMany(Grade::class);
     }
 
+    public function assignedStudents(): BelongsToMany
+    {
+        return $this->belongsToMany(Student::class, 'examination_assignments')
+            ->withTimestamps();
+    }
+
     public function statusKey(): string
     {
         $status = $this->status;
@@ -155,7 +163,20 @@ class Examination extends Model
                 ExamStatus::Published,
                 ExamStatus::Active,
             ])
-            ->assignedToSections($student->accessibleSectionIds());
+            ->where(function (Builder $query) use ($student) {
+                $accessService = app(\App\Services\Examinations\ExaminationAccessService::class);
+
+                $query->where(function (Builder $inner) use ($student, $accessService) {
+                    $inner->where('access_mode', ExaminationAccessMode::SubjectOnly)
+                        ->whereIn('id', $accessService->examinationIdsForSubjectEnrollment($student));
+                })->orWhere(function (Builder $inner) use ($student, $accessService) {
+                    $inner->where('access_mode', ExaminationAccessMode::SubjectAndSections)
+                        ->whereIn('id', $accessService->examinationIdsForSubjectAndSection($student));
+                })->orWhere(function (Builder $inner) use ($student) {
+                    $inner->where('access_mode', ExaminationAccessMode::SpecificStudents)
+                        ->whereHas('assignedStudents', fn (Builder $q) => $q->where('students.id', $student->id));
+                });
+            });
     }
 
     public function scopeOwnedByInstructor(Builder $query, Instructor $instructor): Builder

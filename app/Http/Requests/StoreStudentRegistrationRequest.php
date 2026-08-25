@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Services\Students\AcademicLookupService;
+use App\Services\Students\StudentSubjectEnrollmentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -32,6 +33,8 @@ class StoreStudentRegistrationRequest extends FormRequest
             'program_id' => ['required', 'integer', 'exists:programs,id'],
             'year_level_id' => ['required', 'integer', 'exists:year_levels,id'],
             'section_id' => ['required', 'integer', 'exists:sections,id'],
+            'subject_ids' => ['required', 'array', 'min:1'],
+            'subject_ids.*' => ['required', 'integer', 'distinct', 'exists:subjects,id'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ];
     }
@@ -41,6 +44,9 @@ class StoreStudentRegistrationRequest extends FormRequest
         return [
             'student_id.unique' => 'An account using this Student ID already exists.',
             'email.unique' => 'An account using this email address already exists. Please sign in or recover your account.',
+            'subject_ids.required' => 'Please select at least one enrolled subject.',
+            'subject_ids.min' => 'Please select at least one enrolled subject.',
+            'subject_ids.*.exists' => 'One or more selected subjects are invalid or unavailable.',
         ];
     }
 
@@ -68,6 +74,23 @@ class StoreStudentRegistrationRequest extends FormRequest
             if (! $lookup->sectionBelongsToProgramAndYearLevel($sectionId, $programId, $yearLevelId)) {
                 $validator->errors()->add('section_id', 'The selected section is not valid for the chosen program and year level.');
             }
+
+            try {
+                app(StudentSubjectEnrollmentService::class)->validateSubjectIds($this->input('subject_ids', []));
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                foreach ($exception->errors() as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $validator->errors()->add($field, $message);
+                    }
+                }
+            }
         });
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'subject_ids' => array_values(array_unique(array_filter(array_map('intval', (array) $this->input('subject_ids', []))))),
+        ]);
     }
 }

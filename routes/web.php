@@ -22,6 +22,8 @@ Route::middleware('guest')->group(function () {
         ->name('student-registration.year-levels');
     Route::get('/register/student/lookup/sections', [StudentRegistrationController::class, 'sections'])
         ->name('student-registration.sections');
+    Route::get('/register/student/lookup/subjects', [StudentRegistrationController::class, 'subjects'])
+        ->name('student-registration.subjects');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -37,6 +39,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('admin.student-registrations.approve');
         Route::post('/admin/student-registrations/{student}/reject', [AdminStudentRegistrationController::class, 'reject'])
             ->name('admin.student-registrations.reject');
+        Route::post('/admin/student-registrations/{student}/subjects/verify-all', [AdminStudentRegistrationController::class, 'verifyAllSubjects'])
+            ->name('admin.student-registrations.subjects.verify-all');
+        Route::post('/admin/student-registrations/{student}/subjects/{enrollment}/verify', [AdminStudentRegistrationController::class, 'verifySubject'])
+            ->name('admin.student-registrations.subjects.verify');
+        Route::post('/admin/student-registrations/{student}/subjects/{enrollment}/reject', [AdminStudentRegistrationController::class, 'rejectSubject'])
+            ->name('admin.student-registrations.subjects.reject');
+        Route::post('/admin/student-registrations/{student}/subjects/add', [AdminStudentRegistrationController::class, 'addSubject'])
+            ->name('admin.student-registrations.subjects.add');
+        Route::delete('/admin/student-registrations/{student}/subjects/{enrollment}', [AdminStudentRegistrationController::class, 'removeSubject'])
+            ->name('admin.student-registrations.subjects.remove');
+
+        Route::get('/admin/student-subject-requests', [\App\Http\Controllers\AdminStudentSubjectRequestController::class, 'index'])
+            ->name('admin.student-subject-requests.index');
+        Route::get('/admin/student-subject-requests/{changeRequest}', [\App\Http\Controllers\AdminStudentSubjectRequestController::class, 'show'])
+            ->name('admin.student-subject-requests.show');
+        Route::post('/admin/student-subject-requests/{changeRequest}/approve', [\App\Http\Controllers\AdminStudentSubjectRequestController::class, 'approve'])
+            ->name('admin.student-subject-requests.approve');
+        Route::post('/admin/student-subject-requests/{changeRequest}/reject', [\App\Http\Controllers\AdminStudentSubjectRequestController::class, 'reject'])
+            ->name('admin.student-subject-requests.reject');
 
         Route::resource('instructors', \App\Http\Controllers\InstructorController::class);
         Route::resource('departments', \App\Http\Controllers\DepartmentController::class);
@@ -48,6 +69,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/examinations', [PlatformController::class, 'examinations'])->name('examinations.index');
     Route::middleware('role:student')->group(function () {
         Route::get('/my-subjects', [\App\Http\Controllers\StudentEnrollmentController::class, 'index'])->name('student.enrollment.index');
+        Route::get('/my-subjects/change-request', [\App\Http\Controllers\StudentEnrollmentController::class, 'changeRequestForm'])->name('student.enrollment.change-request');
+        Route::post('/my-subjects/change-request', [\App\Http\Controllers\StudentEnrollmentController::class, 'submitChangeRequest'])->name('student.enrollment.change-request.store');
         Route::get('/my-subjects/{subject}', [\App\Http\Controllers\StudentEnrollmentController::class, 'show'])->name('student.enrollment.show');
     });
     Route::middleware('role:superadmin,admin,instructor')->group(function () {

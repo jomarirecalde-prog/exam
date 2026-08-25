@@ -1,6 +1,20 @@
 <x-app-layout>
     <div class="ui-page">
-        <x-ui.page-header title="My Subjects" subtitle="Subjects you are enrolled in for the current term." />
+        <x-ui.page-header title="My Subjects" subtitle="Subjects you have declared as enrolled for the current term.">
+            @unless ($hasPendingChangeRequest)
+                <x-ui.button variant="secondary" :href="route('student.enrollment.change-request')" wire:navigate>Request Subject Change</x-ui.button>
+            @endunless
+        </x-ui.page-header>
+
+        @if (session('status'))
+            <x-ui.alert class="mt-4">{{ session('status') }}</x-ui.alert>
+        @endif
+
+        @if ($hasPendingChangeRequest)
+            <x-ui.alert class="mt-4" variant="warning">
+                You have a pending subject change request awaiting administrator review.
+            </x-ui.alert>
+        @endif
 
         <form method="get" action="{{ route('student.enrollment.index') }}" class="grid gap-4 sm:grid-cols-3">
             <x-ui.field label="Academic year" for="academic_year_id">
@@ -30,60 +44,47 @@
             </div>
         </form>
 
-        <div class="ui-table-wrap mt-4">
-            @if ($enrollments->isEmpty())
-                <div class="px-5">
-                    <x-ui.empty-state title="No enrolled subjects yet." icon="book-open">
-                        Subjects assigned to your section for the selected term will appear here.
-                    </x-ui.empty-state>
-                </div>
-            @else
-                <div class="overflow-x-auto">
-                    <table class="ui-table">
-                        <thead>
-                            <tr>
-                                <th>Subject</th>
-                                <th>Section</th>
-                                <th>Instructor</th>
-                                <th>Term</th>
-                                <th class="w-28"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($enrollments as $enrollment)
-                                <tr>
-                                    <td>
-                                        <p class="font-medium">{{ $enrollment['subject']->name }}</p>
-                                        <p class="text-sm text-muted">{{ $enrollment['subject']->code }} · {{ $enrollment['subject']->units }} units</p>
-                                    </td>
-                                    <td class="text-muted">{{ $enrollment['section']->displayName() }}</td>
-                                    <td class="text-muted">
-                                        @if ($enrollment['instructors']->isEmpty())
-                                            —
-                                        @else
-                                            {{ $enrollment['instructors']->map(fn ($instructor) => $instructor->user?->fullName() ?: '—')->implode(', ') }}
-                                        @endif
-                                    </td>
-                                    <td class="text-muted">
-                                        {{ $enrollment['academic_year']?->name ?: '—' }}
-                                        <span class="text-faint">·</span>
-                                        {{ $enrollment['semester']?->name ?: '—' }}
-                                    </td>
-                                    <td class="text-right">
-                                        <a
-                                            href="{{ route('student.enrollment.show', ['subject' => $enrollment['subject'], 'academic_year_id' => $enrollment['academic_year_id'], 'semester_id' => $enrollment['semester_id']]) }}"
-                                            class="text-sm font-medium hover:underline"
-                                            wire:navigate
-                                        >
-                                            View
-                                        </a>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        </div>
+        @if ($enrollments->isEmpty())
+            <x-ui.empty-state class="mt-6" title="No enrolled subjects yet." icon="book-open">
+                Subjects you declare during registration will appear here.
+            </x-ui.empty-state>
+        @else
+            <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($enrollments as $enrollment)
+                    @php
+                        $status = $enrollment['enrollment']?->status ?? ($enrollment['status'] ?? null);
+                        $isPending = $status === \App\Enums\StudentSubjectEnrollmentStatus::PendingVerification;
+                    @endphp
+                    <article class="ui-card ui-card-pad flex flex-col">
+                        <div class="flex-1">
+                            <p class="text-lg font-semibold">{{ $enrollment['subject']->code }}</p>
+                            <p class="mt-1 text-sm leading-6 text-muted">{{ $enrollment['subject']->name }}</p>
+                            @if ($status)
+                                <div class="mt-3">
+                                    <x-ui.badge :status="$status->badgeStatus()">{{ $status->label() }}</x-ui.badge>
+                                </div>
+                            @endif
+                            @if ($isPending && $subjectVerificationRequired)
+                                <p class="mt-3 text-sm leading-6 text-warning-ink">
+                                    Your enrollment for this subject is currently awaiting verification.
+                                </p>
+                            @endif
+                            <p class="mt-3 text-sm text-muted">
+                                {{ $enrollment['available_exams_count'] }} available examination(s)
+                            </p>
+                        </div>
+                        <div class="mt-4">
+                            <a
+                                href="{{ route('student.enrollment.show', ['subject' => $enrollment['subject'], 'academic_year_id' => $enrollment['academic_year_id'], 'semester_id' => $enrollment['semester_id']]) }}"
+                                class="btn-secondary inline-flex w-full justify-center text-sm"
+                                wire:navigate
+                            >
+                                View Details
+                            </a>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        @endif
     </div>
 </x-app-layout>

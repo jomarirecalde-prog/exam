@@ -18,6 +18,7 @@ class StudentRegistrationService
 {
     public function __construct(
         protected AcademicLookupService $academic,
+        protected StudentSubjectEnrollmentService $subjectEnrollments,
     ) {
     }
 
@@ -33,7 +34,9 @@ class StudentRegistrationService
             (int) $data['section_id'],
         );
 
-        $student = DB::transaction(function () use ($data) {
+        $subjectIds = $this->subjectEnrollments->validateSubjectIds($data['subject_ids'] ?? []);
+
+        $student = DB::transaction(function () use ($data, $subjectIds) {
             $firstName = trim($data['first_name']);
             $lastName = trim($data['last_name']);
             $middleName = filled($data['middle_name'] ?? null) ? trim($data['middle_name']) : null;
@@ -71,8 +74,13 @@ class StudentRegistrationService
             ]);
 
             $this->syncSectionEnrollment($student);
+            $this->subjectEnrollments->syncDeclaredEnrollments(
+                $student,
+                $subjectIds,
+                actor: $user,
+            );
 
-            return $student->load(['user', 'program.department', 'yearLevel', 'section']);
+            return $student->load(['user', 'program.department', 'yearLevel', 'section', 'subjectEnrollments.subject']);
         });
 
         $this->notifyAdministrators($student);
@@ -96,7 +104,7 @@ class StudentRegistrationService
                 'email_verified_at' => $student->user->email_verified_at ?? now(),
             ]);
 
-            return $student->fresh(['user', 'program.department', 'yearLevel', 'section']);
+            return $student->fresh(['user', 'program.department', 'yearLevel', 'section', 'subjectEnrollments.subject']);
         });
 
         $this->notifyStudentOfApproval($student);
@@ -117,7 +125,7 @@ class StudentRegistrationService
 
             $student->user?->update(['is_active' => false]);
 
-            return $student->fresh(['user', 'program.department', 'yearLevel', 'section']);
+            return $student->fresh(['user', 'program.department', 'yearLevel', 'section', 'subjectEnrollments.subject']);
         });
     }
 

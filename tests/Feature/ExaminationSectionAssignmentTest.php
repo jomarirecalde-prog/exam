@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\AttemptStatus;
+use App\Enums\ExaminationAccessMode;
 use App\Enums\ExaminationPeriod;
 use App\Enums\ExamStatus;
 use App\Enums\UserRole;
@@ -44,7 +45,7 @@ class ExaminationSectionAssignmentTest extends TestCase
             ->get(route('examinations.create'))
             ->assertOk()
             ->assertSee('Target Section(s)')
-            ->assertSee('Only students assigned to these sections can access it.');
+            ->assertSee('Student must be enrolled in the subject and belong to a selected section.');
     }
 
     public function test_admin_can_create_an_examination_for_one_section(): void
@@ -409,6 +410,7 @@ class ExaminationSectionAssignmentTest extends TestCase
             'program_id' => $structure['program']->id,
             'year_level_id' => $structure['yearLevel1']->id,
             'section_ids' => [$structure['sectionA']->id],
+            'access_mode' => ExaminationAccessMode::SubjectAndSections->value,
             'examination_period' => ExaminationPeriod::Midterm->value,
             'duration_minutes' => 60,
             'passing_percentage' => 75,
@@ -437,6 +439,7 @@ class ExaminationSectionAssignmentTest extends TestCase
             'passing_percentage' => 75,
             'status' => ExamStatus::Draft,
             'needs_section_review' => $sectionIds === [],
+            'access_mode' => ExaminationAccessMode::SubjectAndSections,
         ], $attributes));
 
         if ($sectionIds !== []) {

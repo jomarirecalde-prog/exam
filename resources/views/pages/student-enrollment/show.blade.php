@@ -7,6 +7,17 @@
             <x-ui.button variant="secondary" :href="route('student.enrollment.index')" wire:navigate>Back to My Subjects</x-ui.button>
         </x-ui.page-header>
 
+        @php
+            $enrollmentStatus = $enrollment['enrollment']?->status ?? null;
+            $isPending = $enrollmentStatus === \App\Enums\StudentSubjectEnrollmentStatus::PendingVerification;
+        @endphp
+
+        @if ($isPending && $subjectVerificationRequired)
+            <x-ui.alert class="mt-4" variant="warning">
+                Your enrollment for this subject is currently awaiting verification. Examinations will become accessible once verified.
+            </x-ui.alert>
+        @endif
+
         <div class="grid gap-6 lg:grid-cols-3">
             <x-ui.card class="lg:col-span-1">
                 <h2 class="ui-section">Subject</h2>
@@ -23,6 +34,12 @@
                         <dt class="text-muted">Units</dt>
                         <dd class="mt-1">{{ $subject->units }}</dd>
                     </div>
+                    @if ($enrollmentStatus)
+                        <div>
+                            <dt class="text-muted">Enrollment Status</dt>
+                            <dd class="mt-1"><x-ui.badge :status="$enrollmentStatus->badgeStatus()">{{ $enrollmentStatus->label() }}</x-ui.badge></dd>
+                        </div>
+                    @endif
                     @if (filled($subject->description))
                         <div>
                             <dt class="text-muted">Description</dt>
@@ -37,15 +54,15 @@
                 <dl class="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
                     <div>
                         <dt class="text-muted">Section</dt>
-                        <dd class="mt-1 font-medium">{{ $section->displayName() }}</dd>
+                        <dd class="mt-1 font-medium">{{ $section?->displayName() ?: '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-muted">Program</dt>
-                        <dd class="mt-1">{{ $section->program?->name ?: '—' }}</dd>
+                        <dd class="mt-1">{{ $section?->program?->name ?: '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-muted">Year level</dt>
-                        <dd class="mt-1">{{ $section->yearLevel?->name ?: '—' }}</dd>
+                        <dd class="mt-1">{{ $section?->yearLevel?->name ?: '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-muted">Term</dt>
@@ -56,6 +73,25 @@
                         </dd>
                     </div>
                 </dl>
+
+                <h3 class="ui-kicker mt-8">Available Examinations</h3>
+                @if ($examinations->isEmpty())
+                    <x-ui.empty-state class="mt-4" title="No examinations available." icon="clipboard-list">
+                        Examinations for this subject will appear here when published.
+                    </x-ui.empty-state>
+                @else
+                    <div class="mt-4 space-y-3">
+                        @foreach ($examinations as $examination)
+                            <article class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3">
+                                <div>
+                                    <p class="font-medium">{{ $examination->title }}</p>
+                                    <p class="text-sm text-muted">{{ $examination->periodLabel() }}</p>
+                                </div>
+                                <a href="{{ route('examinations.take', $examination) }}" class="text-sm font-medium hover:underline" wire:navigate>Take Exam</a>
+                            </article>
+                        @endforeach
+                    </div>
+                @endif
 
                 <h3 class="ui-kicker mt-8">Instructor</h3>
 

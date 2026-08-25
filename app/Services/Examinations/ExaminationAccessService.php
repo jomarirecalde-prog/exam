@@ -3,15 +3,22 @@
 namespace App\Services\Examinations;
 
 use App\Enums\AttemptStatus;
+use App\Enums\ExaminationAccessMode;
 use App\Enums\ExamStatus;
 use App\Models\Examination;
 use App\Models\ExaminationAttempt;
 use App\Models\Grade;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\Students\StudentSubjectEnrollmentService;
+use Illuminate\Support\Collection;
 
 class ExaminationAccessService
 {
+    public function __construct(
+        protected StudentSubjectEnrollmentService $subjectEnrollments,
+    ) {}
+
     public function canManage(User $user, ?Examination $examination = null): bool
     {
         if ($user->hasAnyRole(['superadmin', 'admin'])) {
@@ -94,7 +101,20 @@ class ExaminationAccessService
     {
         $student = $user->student;
 
-        if (! $student || ! $this->studentAssignedToExamination($student, $examination)) {
+        if (! $student) {
+            return 'You are not authorized to access this examination.';
+        }
+
+        if (! $this->isEnrolledInExamSubject($student, $examination)) {
+            return 'You are not enrolled in the subject for this examination.';
+        }
+
+        if ($this->subjectEnrollments->subjectVerificationRequired()
+            && ! $this->hasVerifiedSubjectEnrollment($student, $examination)) {
+            return 'Your enrollment for this subject is awaiting verification.';
+        }
+
+        if (! $this->studentAssignedToExamination($student, $examination)) {
             return 'You are not authorized to access this examination.';
         }
 
@@ -119,18 +139,117 @@ class ExaminationAccessService
             return false;
         }
 
-        $sectionIds = $student->accessibleSectionIds(
-            $examination->academic_year_id,
-            $examination->semester_id,
-        );
-
-        if ($sectionIds === []) {
+        if (! $this->isEnrolledInExamSubject($student, $examination)) {
             return false;
         }
 
-        return $examination->sections()
-            ->whereIn('sections.id', $sectionIds)
-            ->exists();
+        $accessMode = $examination->access_mode ?? ExaminationAccessMode::SubjectAndSections;
+
+        return match ($accessMode) {
+            ExaminationAccessMode::SubjectOnly => true,
+            ExaminationAccessMode::SpecificStudents => $examination->assignedStudents()
+                ->where('students.id', $student->id)
+                ->exists(),
+            ExaminationAccessMode::SubjectAndSections => $this->studentInAssignedSections($student, $examination),
+        };
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    public function examinationIdsForSubjectEnrollment(Student $student): Collection
+    {
+        if (! $student->subjectEnrollments()->exists()) {
+            return collect();
+        }
+
+        $verificationRequired = $this->subjectEnrollments->subjectVerificationRequired();
+
+        return Examination::query()
+            ->where('access_mode', ExaminationAccessMode::SubjectOnly)
+            ->get(['id', 'subject_id', 'academic_year_id', 'semester_id'])
+            ->filter(fn (Examination $exam) => $this->subjectEnrollments->isEnrolledInSubject(
+                $student,
+                (int) $exam->subject_id,
+                (int) $exam->academic_year_id,
+                (int) $exam->semester_id,
+                $verificationRequired,
+            ))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    public function examinationIdsForSubjectAndSection(Student $student): Collection
+    {
+        if (! $student->subjectEnrollments()->exists()) {
+            return $this->legacyExaminationIdsForSections($student);
+        }
+
+        $verificationRequired = $this->subjectEnrollments->subjectVerificationRequired();
+
+        return Examination::query()
+            ->where('access_mode', ExaminationAccessMode::SubjectAndSections)
+            ->with('sections:id')
+            ->get(['id', 'subject_id', 'academic_year_id', 'semester_id'])
+            ->filter(function (Examination $exam) use ($student, $verificationRequired) {
+                if (! $this->subjectEnrollments->isEnrolledInSubject(
+                    $student,
+                    (int) $exam->subject_id,
+                    (int) $exam->academic_year_id,
+                    (int) $exam->semester_id,
+                    $verificationRequired,
+                )) {
+                    return false;
+                }
+
+                $sectionIds = $student->accessibleSectionIds(
+                    $exam->academic_year_id,
+                    $exam->semester_id,
+                );
+
+                if ($sectionIds === []) {
+                    return false;
+                }
+
+                return $exam->sections->pluck('id')->intersect($sectionIds)->isNotEmpty();
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    protected function legacyExaminationIdsForSections(Student $student): Collection
+    {
+        return Examination::query()
+            ->where('access_mode', ExaminationAccessMode::SubjectAndSections)
+            ->whereIn('status', [
+                ExamStatus::Published,
+                ExamStatus::Active,
+            ])
+            ->with('sections:id')
+            ->get(['id', 'academic_year_id', 'semester_id'])
+            ->filter(function (Examination $exam) use ($student) {
+                $sectionIds = $student->accessibleSectionIds(
+                    $exam->academic_year_id,
+                    $exam->semester_id,
+                );
+
+                if ($sectionIds === []) {
+                    return false;
+                }
+
+                return $exam->sections->pluck('id')->intersect($sectionIds)->isNotEmpty();
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
     }
 
     public function isPublishedForStudents(Examination $examination): bool
@@ -161,6 +280,67 @@ class ExaminationAccessService
             ->count();
 
         return $used >= $maxAttempts;
+    }
+
+    protected function isEnrolledInExamSubject(Student $student, Examination $examination): bool
+    {
+        if (! $examination->subject_id) {
+            return false;
+        }
+
+        return $this->subjectEnrollments->isEnrolledInSubject(
+            $student,
+            (int) $examination->subject_id,
+            (int) $examination->academic_year_id,
+            (int) $examination->semester_id,
+        ) || $this->legacySectionSubjectAccess($student, $examination);
+    }
+
+    protected function hasVerifiedSubjectEnrollment(Student $student, Examination $examination): bool
+    {
+        return $this->subjectEnrollments->isEnrolledInSubject(
+            $student,
+            (int) $examination->subject_id,
+            (int) $examination->academic_year_id,
+            (int) $examination->semester_id,
+            true,
+        );
+    }
+
+    protected function legacySectionSubjectAccess(Student $student, Examination $examination): bool
+    {
+        if ($student->subjectEnrollments()->exists()) {
+            return false;
+        }
+
+        $sectionIds = $student->accessibleSectionIds(
+            $examination->academic_year_id,
+            $examination->semester_id,
+        );
+
+        if ($sectionIds === []) {
+            return false;
+        }
+
+        return $examination->sections()
+            ->whereIn('sections.id', $sectionIds)
+            ->exists();
+    }
+
+    protected function studentInAssignedSections(Student $student, Examination $examination): bool
+    {
+        $sectionIds = $student->accessibleSectionIds(
+            $examination->academic_year_id,
+            $examination->semester_id,
+        );
+
+        if ($sectionIds === []) {
+            return false;
+        }
+
+        return $examination->sections()
+            ->whereIn('sections.id', $sectionIds)
+            ->exists();
     }
 
     protected function studentAuthorizedForExamination(Student $student, Examination $examination): bool

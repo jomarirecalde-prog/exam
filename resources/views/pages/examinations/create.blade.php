@@ -86,10 +86,32 @@
                         </x-ui.field>
 
                         <div class="sm:col-span-2 space-y-0">
+                            <label class="ui-label">Examination Access</label>
+                            <p class="mb-3 text-sm leading-6 text-muted">
+                                Students must be enrolled in the selected subject. Section restrictions apply only when using the section-based access mode.
+                            </p>
+                            <div class="space-y-2">
+                                <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3">
+                                    <input type="radio" class="mt-1" value="subject_only" x-model="form.accessMode">
+                                    <span>
+                                        <span class="block font-medium">All students enrolled in this subject</span>
+                                        <span class="text-sm text-muted">Recommended for irregular students across sections or year levels.</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3">
+                                    <input type="radio" class="mt-1" value="subject_and_sections" x-model="form.accessMode">
+                                    <span>
+                                        <span class="block font-medium">Only selected sections</span>
+                                        <span class="text-sm text-muted">Student must be enrolled in the subject and belong to a selected section.</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="sm:col-span-2 space-y-0" x-show="form.accessMode === 'subject_and_sections'" x-cloak>
                             <label class="ui-label" for="section-search">Target Section(s) *</label>
                             <p class="mb-3 text-sm leading-6 text-muted">
-                                Select the section(s) that will take this examination.
-                                Only students assigned to these sections can access it.
+                                Select the section(s) whose enrolled students may access this examination.
                             </p>
 
                             <div class="relative" @keydown.escape.window="sectionMenuOpen = false">

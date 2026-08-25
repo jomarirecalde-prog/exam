@@ -400,6 +400,7 @@ window.examWizard = function examWizard(config = {}) {
             programId: incomingForm.programId ? String(incomingForm.programId) : '',
             yearLevelId: incomingForm.yearLevelId ? String(incomingForm.yearLevelId) : '',
             sectionIds: (incomingForm.sectionIds || []).map((id) => Number(id)),
+            accessMode: incomingForm.accessMode || 'subject_and_sections',
             period: incomingForm.period || 'MIDTERM',
             duration: incomingForm.duration ?? 60,
             passing: incomingForm.passing ?? 75,
@@ -591,7 +592,7 @@ window.examWizard = function examWizard(config = {}) {
             if (!this.form.yearLevelId) {
                 errors.year_level_id = 'Please select a year level.';
             }
-            if (this.form.sectionIds.length === 0) {
+            if (this.form.accessMode === 'subject_and_sections' && this.form.sectionIds.length === 0) {
                 errors.section_ids = 'Please select at least one section before continuing.';
             }
             this.errors = errors;
@@ -606,6 +607,7 @@ window.examWizard = function examWizard(config = {}) {
                 program_id: this.form.programId,
                 year_level_id: this.form.yearLevelId,
                 section_ids: this.form.sectionIds,
+                access_mode: this.form.accessMode,
                 examination_period: this.form.period,
                 instructions: this.form.instructions,
                 duration_minutes: this.form.duration,
@@ -887,16 +889,24 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         programs: [],
         yearLevels: [],
         sections: [],
+        recommendedSubjects: [],
+        otherSubjects: [],
+        subjectCatalog: {},
         programsLoading: false,
         yearLevelsLoading: false,
         sectionsLoading: false,
+        subjectsLoading: false,
+        subjectSearch: '',
+        browseAllSubjects: false,
         errors: Object.fromEntries(
             Object.entries(serverErrors).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])
         ),
         steps: [
             { id: 1, label: 'Personal' },
             { id: 2, label: 'Academic' },
-            { id: 3, label: 'Account' },
+            { id: 3, label: 'Section' },
+            { id: 4, label: 'Subjects' },
+            { id: 5, label: 'Review' },
         ],
         form: {
             first_name: old.first_name || '',
@@ -913,12 +923,14 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             program_id: old.program_id ? String(old.program_id) : '',
             year_level_id: old.year_level_id ? String(old.year_level_id) : '',
             section_id: old.section_id ? String(old.section_id) : '',
+            subject_ids: Array.isArray(old.subject_ids) ? old.subject_ids.map(String) : [],
             password: '',
             password_confirmation: '',
         },
         programsUrl: config.programsUrl || '',
         yearLevelsUrl: config.yearLevelsUrl || '',
         sectionsUrl: config.sectionsUrl || '',
+        subjectsUrl: config.subjectsUrl || '',
         today: new Date().toISOString().slice(0, 10),
         init() {
             if (Object.keys(serverErrors).length > 0) {
@@ -930,7 +942,11 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
                     if (this.form.program_id) {
                         this.fetchYearLevels(false).then(() => {
                             if (this.form.year_level_id) {
-                                this.fetchSections();
+                                this.fetchSections(false).then(() => {
+                                    if (this.form.section_id) {
+                                        this.fetchSubjects();
+                                    }
+                                });
                             }
                         });
                     }
@@ -938,21 +954,21 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             }
         },
         inferStepFromErrors() {
-            const academic = ['student_id', 'department_id', 'program_id', 'year_level_id', 'section_id'];
+            const personal = ['first_name', 'last_name', 'phone', 'email'];
+            const academic = ['student_id', 'department_id', 'program_id', 'year_level_id'];
+            const section = ['section_id'];
+            const subjects = ['subject_ids'];
             const account = ['password', 'password_confirmation'];
 
-            if (account.some((field) => serverErrors[field])) {
-                return 3;
-            }
-            if (academic.some((field) => serverErrors[field])) {
-                return 2;
-            }
+            if (account.some((field) => serverErrors[field])) return 5;
+            if (subjects.some((field) => serverErrors[field])) return 4;
+            if (section.some((field) => serverErrors[field])) return 3;
+            if (academic.some((field) => serverErrors[field])) return 2;
+            if (personal.some((field) => serverErrors[field])) return 1;
             return 1;
         },
         stepStatus(id) {
-            if (id < this.step) {
-                return 'complete';
-            }
+            if (id < this.step) return 'complete';
             return id === this.step ? 'current' : 'upcoming';
         },
         get passwordStrengthScore() {
@@ -980,6 +996,28 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             const labels = ['Weak', 'Fair', 'Good', 'Strong'];
             return labels[Math.max(0, this.passwordStrengthScore - 1)] || 'Weak';
         },
+        get reviewFullName() {
+            return [this.form.first_name, this.form.middle_name, this.form.last_name, this.form.suffix]
+                .filter((part) => part && String(part).trim() !== '')
+                .join(' ');
+        },
+        get selectedProgramName() {
+            const program = this.programs.find((item) => String(item.id) === String(this.form.program_id));
+            return program?.name || '—';
+        },
+        get selectedYearLevelName() {
+            const level = this.yearLevels.find((item) => String(item.id) === String(this.form.year_level_id));
+            return level?.name || '—';
+        },
+        get selectedSectionName() {
+            const section = this.sections.find((item) => String(item.id) === String(this.form.section_id));
+            return section?.name || section?.code || '—';
+        },
+        get selectedSubjectsList() {
+            return this.form.subject_ids
+                .map((id) => this.subjectCatalog[String(id)])
+                .filter(Boolean);
+        },
         validateStep1() {
             this.errors = {};
             if (!this.form.first_name.trim()) this.errors.first_name = 'First name is required.';
@@ -994,10 +1032,21 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             if (!this.form.department_id) this.errors.department_id = 'Please select a department.';
             if (!this.form.program_id) this.errors.program_id = 'Please select a program.';
             if (!this.form.year_level_id) this.errors.year_level_id = 'Please select a year level.';
-            if (!this.form.section_id) this.errors.section_id = 'Please select a section.';
             return Object.keys(this.errors).length === 0;
         },
         validateStep3() {
+            this.errors = {};
+            if (!this.form.section_id) this.errors.section_id = 'Please select a section.';
+            return Object.keys(this.errors).length === 0;
+        },
+        validateStep4() {
+            this.errors = {};
+            if (this.form.subject_ids.length === 0) {
+                this.errors.subject_ids = 'Please select at least one enrolled subject.';
+            }
+            return Object.keys(this.errors).length === 0;
+        },
+        validateStep5() {
             this.errors = {};
             if (!this.form.password) this.errors.password = 'Password is required.';
             if (this.form.password !== this.form.password_confirmation) {
@@ -1008,40 +1057,82 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         next() {
             if (this.step === 1 && !this.validateStep1()) return;
             if (this.step === 2 && !this.validateStep2()) return;
-            this.step = Math.min(3, this.step + 1);
+            if (this.step === 3) {
+                if (!this.validateStep3()) return;
+                this.fetchSubjects();
+            }
+            if (this.step === 4 && !this.validateStep4()) return;
+            this.step = Math.min(5, this.step + 1);
         },
         back() {
             this.errors = {};
             this.step = Math.max(1, this.step - 1);
         },
         submit(event) {
-            if (!this.validateStep3()) {
+            if (!this.validateStep5()) {
                 event.preventDefault();
-                this.step = 3;
+                this.step = 5;
                 return;
             }
             this.submitting = true;
+        },
+        isSubjectSelected(subjectId) {
+            return this.form.subject_ids.includes(String(subjectId));
+        },
+        toggleSubject(subjectId) {
+            const id = String(subjectId);
+            if (this.isSubjectSelected(id)) {
+                this.form.subject_ids = this.form.subject_ids.filter((item) => item !== id);
+            } else {
+                this.form.subject_ids = [...this.form.subject_ids, id];
+            }
+        },
+        toggleBrowseAll() {
+            this.browseAllSubjects = !this.browseAllSubjects;
+            this.fetchSubjects();
+        },
+        indexSubjects(subjects) {
+            subjects.forEach((subject) => {
+                this.subjectCatalog[String(subject.id)] = subject;
+            });
         },
         async onDepartmentChange() {
             this.form.program_id = '';
             this.form.year_level_id = '';
             this.form.section_id = '';
+            this.form.subject_ids = [];
             this.programs = [];
             this.yearLevels = [];
             this.sections = [];
+            this.recommendedSubjects = [];
+            this.otherSubjects = [];
             await this.fetchPrograms();
         },
         async onProgramChange() {
             this.form.year_level_id = '';
             this.form.section_id = '';
+            this.form.subject_ids = [];
             this.yearLevels = [];
             this.sections = [];
+            this.recommendedSubjects = [];
+            this.otherSubjects = [];
             await this.fetchYearLevels();
         },
         async onYearLevelChange() {
             this.form.section_id = '';
+            this.form.subject_ids = [];
             this.sections = [];
+            this.recommendedSubjects = [];
+            this.otherSubjects = [];
             await this.fetchSections();
+        },
+        async onSectionChange() {
+            this.form.subject_ids = [];
+            this.recommendedSubjects = [];
+            this.otherSubjects = [];
+            if (this.form.section_id) {
+                await this.fetchSubjects();
+            }
         },
         async fetchPrograms(reset = true) {
             if (!this.form.department_id) return;
@@ -1079,7 +1170,7 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
                 this.yearLevelsLoading = false;
             }
         },
-        async fetchSections() {
+        async fetchSections(reset = true) {
             if (!this.form.program_id || !this.form.year_level_id) return;
             this.sectionsLoading = true;
             try {
@@ -1092,13 +1183,44 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
                 });
                 const data = await response.json();
                 this.sections = data.sections || [];
-                if (!this.sections.some((item) => String(item.id) === String(this.form.section_id))) {
+                if (reset && !this.sections.some((item) => String(item.id) === String(this.form.section_id))) {
                     this.form.section_id = '';
                 }
             } catch (error) {
                 this.sections = [];
             } finally {
                 this.sectionsLoading = false;
+            }
+        },
+        async fetchSubjects() {
+            if (!this.form.section_id || !this.form.department_id || !this.form.program_id || !this.form.year_level_id) {
+                return;
+            }
+            this.subjectsLoading = true;
+            try {
+                const params = new URLSearchParams({
+                    section_id: this.form.section_id,
+                    department_id: this.form.department_id,
+                    program_id: this.form.program_id,
+                    year_level_id: this.form.year_level_id,
+                    browse_all: this.browseAllSubjects ? '1' : '0',
+                });
+                if (this.subjectSearch.trim()) {
+                    params.set('search', this.subjectSearch.trim());
+                }
+                const response = await fetch(`${this.subjectsUrl}?${params.toString()}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                this.recommendedSubjects = data.recommended || [];
+                this.otherSubjects = data.other || [];
+                this.indexSubjects(this.recommendedSubjects);
+                this.indexSubjects(this.otherSubjects);
+            } catch (error) {
+                this.recommendedSubjects = [];
+                this.otherSubjects = [];
+            } finally {
+                this.subjectsLoading = false;
             }
         },
     };

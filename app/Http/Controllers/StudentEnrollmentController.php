@@ -8,6 +8,8 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Services\Students\AcademicLookupService;
 use App\Services\Students\StudentEnrollmentService;
+use App\Services\Students\StudentSubjectEnrollmentService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -16,6 +18,7 @@ class StudentEnrollmentController extends Controller
     public function __construct(
         protected StudentEnrollmentService $enrollmentService,
         protected AcademicLookupService $academicLookup,
+        protected StudentSubjectEnrollmentService $subjectEnrollments,
     ) {}
 
     public function index(Request $request): View
@@ -35,6 +38,8 @@ class StudentEnrollmentController extends Controller
             'semesters' => Semester::query()->orderBy('order')->get(['id', 'academic_year_id', 'name']),
             'academicYearId' => $academicYearId,
             'semesterId' => $semesterId,
+            'subjectVerificationRequired' => $this->subjectEnrollments->subjectVerificationRequired(),
+            'hasPendingChangeRequest' => $this->enrollmentService->hasPendingChangeRequest($student),
         ]);
     }
 
@@ -51,6 +56,14 @@ class StudentEnrollmentController extends Controller
             $semesterId,
         );
 
+        $examinations = \App\Models\Examination::query()
+            ->visibleToStudent($student)
+            ->where('subject_id', $subject->id)
+            ->where('academic_year_id', $academicYearId)
+            ->where('semester_id', $semesterId)
+            ->orderBy('title')
+            ->get();
+
         return view('pages.student-enrollment.show', [
             'enrollment' => $enrollment,
             'subject' => $enrollment['subject'],
@@ -60,7 +73,54 @@ class StudentEnrollmentController extends Controller
             'semester' => $enrollment['semester'],
             'academicYearId' => $academicYearId,
             'semesterId' => $semesterId,
+            'examinations' => $examinations,
+            'subjectVerificationRequired' => $this->subjectEnrollments->subjectVerificationRequired(),
         ]);
+    }
+
+    public function changeRequestForm(Request $request): View
+    {
+        $student = $this->studentProfile($request);
+
+        abort_if($this->enrollmentService->hasPendingChangeRequest($student), 422, 'You already have a pending subject change request.');
+
+        $academicYearId = $this->academicLookup->currentAcademicYear()?->id;
+        $semesterId = $this->academicLookup->currentSemester()?->id;
+
+        $currentEnrollments = $this->enrollmentService->enrollments($student, $academicYearId, $semesterId);
+        $availableSubjects = Subject::query()->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name', 'units']);
+
+        return view('pages.student-enrollment.change-request', [
+            'student' => $student,
+            'currentEnrollments' => $currentEnrollments,
+            'availableSubjects' => $availableSubjects,
+            'academicYearId' => $academicYearId,
+            'semesterId' => $semesterId,
+        ]);
+    }
+
+    public function submitChangeRequest(Request $request): RedirectResponse
+    {
+        $student = $this->studentProfile($request);
+
+        $data = $request->validate([
+            'add_subject_ids' => ['nullable', 'array'],
+            'add_subject_ids.*' => ['integer', 'exists:subjects,id'],
+            'remove_subject_ids' => ['nullable', 'array'],
+            'remove_subject_ids.*' => ['integer', 'exists:subjects,id'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $this->subjectEnrollments->submitChangeRequest(
+            $student,
+            $data['add_subject_ids'] ?? [],
+            $data['remove_subject_ids'] ?? [],
+            $data['reason'] ?? null,
+        );
+
+        return redirect()
+            ->route('student.enrollment.index')
+            ->with('status', 'Your subject change request has been submitted for review.');
     }
 
     protected function studentProfile(Request $request): Student

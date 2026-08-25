@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\StudentRegistrationStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +70,23 @@ class Student extends Model
         return $this->belongsToMany(Section::class, 'student_sections')
             ->withPivot(['academic_year_id', 'semester_id'])
             ->withTimestamps();
+    }
+
+    public function subjectEnrollments(): HasMany
+    {
+        return $this->hasMany(StudentSubject::class);
+    }
+
+    public function subjects(): BelongsToMany
+    {
+        return $this->belongsToMany(Subject::class, 'student_subjects')
+            ->withPivot(['academic_year_id', 'semester_id', 'status', 'verified_at', 'verified_by', 'rejection_reason'])
+            ->withTimestamps();
+    }
+
+    public function subjectChangeRequests(): HasMany
+    {
+        return $this->hasMany(StudentSubjectChangeRequest::class);
     }
 
     public function isRegistrationPending(): bool

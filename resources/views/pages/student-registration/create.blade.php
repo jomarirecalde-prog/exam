@@ -5,6 +5,7 @@
             'programsUrl' => route('student-registration.programs'),
             'yearLevelsUrl' => route('student-registration.year-levels'),
             'sectionsUrl' => route('student-registration.sections'),
+            'subjectsUrl' => route('student-registration.subjects'),
             'departments' => $departments,
             'old' => old(),
             'errors' => $errors->messages(),
@@ -40,6 +41,11 @@
         <form method="post" action="{{ route('student-registration.store') }}" @submit="submit" class="mt-8 space-y-6">
             @csrf
 
+            <template x-for="subjectId in form.subject_ids" :key="'subject-' + subjectId">
+                <input type="hidden" name="subject_ids[]" :value="subjectId">
+            </template>
+
+            {{-- Step 1: Personal --}}
             <div x-show="step === 1" x-cloak class="ui-card ui-card-pad space-y-5">
                 <h2 class="text-lg font-semibold">Personal Information</h2>
 
@@ -91,8 +97,9 @@
                 </div>
             </div>
 
+            {{-- Step 2: Academic --}}
             <div x-show="step === 2" x-cloak class="ui-card ui-card-pad space-y-5">
-                <h2 class="text-lg font-semibold">Student Information</h2>
+                <h2 class="text-lg font-semibold">Academic Information</h2>
 
                 <x-ui.field label="Student ID / Student Number *" for="student_id">
                     <input type="text" id="student_id" name="student_id" x-model="form.student_id" class="ui-input" required>
@@ -128,9 +135,15 @@
                     </select>
                     <p class="ui-error" x-show="errors.year_level_id" x-text="errors.year_level_id" role="alert"></p>
                 </x-ui.field>
+            </div>
+
+            {{-- Step 3: Section --}}
+            <div x-show="step === 3" x-cloak class="ui-card ui-card-pad space-y-5">
+                <h2 class="text-lg font-semibold">Select Section</h2>
+                <p class="text-sm leading-6 text-muted">Choose your primary section. This does not automatically determine your enrolled subjects.</p>
 
                 <x-ui.field label="Section *" for="section_id">
-                    <select id="section_id" name="section_id" x-model="form.section_id" class="ui-input" :disabled="!form.year_level_id || sectionsLoading" required>
+                    <select id="section_id" name="section_id" x-model="form.section_id" @change="onSectionChange" class="ui-input" :disabled="!form.year_level_id || sectionsLoading" required>
                         <option value="" x-text="sectionsLoading ? 'Loading sections...' : (sections.length === 0 && form.year_level_id ? 'No sections available' : 'Select section')"></option>
                         <template x-for="section in sections" :key="section.id">
                             <option :value="section.id" x-text="section.name || section.code"></option>
@@ -141,41 +154,158 @@
                 </x-ui.field>
             </div>
 
-            <div x-show="step === 3" x-cloak class="ui-card ui-card-pad space-y-5">
-                <h2 class="text-lg font-semibold">Account Security</h2>
+            {{-- Step 4: Enrolled Subjects --}}
+            <div x-show="step === 4" x-cloak class="ui-card ui-card-pad space-y-5">
+                <div>
+                    <p class="text-sm font-medium text-muted">Step 4 of 5 — Enrolled Subjects</p>
+                    <h2 class="mt-1 text-lg font-semibold">Select Your Enrolled Subjects</h2>
+                    <p class="mt-2 text-sm leading-6 text-muted">
+                        Select only the subjects you are officially enrolled in with the School Registrar.
+                        If you are an irregular student, select all subjects included in your current enrollment.
+                    </p>
+                    <div class="mt-3 rounded-lg border border-warning-line bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">
+                        <strong>Important:</strong> Your selected subjects will be used to determine which examinations and subject-related activities you can access.
+                    </div>
+                </div>
 
-                <x-ui.field label="Password *" for="password">
-                    <div class="relative">
-                        <input :type="showPassword ? 'text' : 'password'" id="password" name="password" x-model="form.password" class="ui-input pr-10" autocomplete="new-password" required>
-                        <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
-                            <x-icon name="eye" :size="18" x-show="!showPassword" />
-                            <x-icon name="eye-off" :size="18" x-show="showPassword" x-cloak />
-                        </button>
-                    </div>
-                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-soft">
-                        <div class="h-full rounded-full transition-all" :class="passwordStrengthClass" :style="`width: ${passwordStrengthPercent}%`"></div>
-                    </div>
-                    <p class="ui-help" x-text="passwordStrengthLabel"></p>
-                    <p class="ui-error" x-show="errors.password" x-text="errors.password" role="alert"></p>
-                </x-ui.field>
+                <div class="relative">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    </span>
+                    <input
+                        type="search"
+                        x-model="subjectSearch"
+                        @input.debounce.300ms="fetchSubjects"
+                        class="ui-input pl-10"
+                        placeholder="Search subjects by code or name..."
+                        autocomplete="off"
+                    >
+                </div>
 
-                <x-ui.field label="Confirm Password *" for="password_confirmation">
-                    <div class="relative">
-                        <input :type="showConfirmPassword ? 'text' : 'password'" id="password_confirmation" name="password_confirmation" x-model="form.password_confirmation" class="ui-input pr-10" autocomplete="new-password" required>
-                        <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showConfirmPassword = !showConfirmPassword">
-                            <x-icon name="eye" :size="18" x-show="!showConfirmPassword" />
-                            <x-icon name="eye-off" :size="18" x-show="showConfirmPassword" x-cloak />
-                        </button>
+                <div x-show="subjectsLoading" class="text-sm text-muted">Loading subjects...</div>
+
+                <div x-show="!subjectsLoading && recommendedSubjects.length > 0" class="space-y-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">Recommended for Your Section</h3>
+                    <div class="space-y-2">
+                        <template x-for="subject in recommendedSubjects" :key="'rec-' + subject.id">
+                            <label class="flex min-h-[3.25rem] cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
+                                <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :value="String(subject.id)" :checked="isSubjectSelected(subject.id)" @change="toggleSubject(subject.id)">
+                                <span class="flex-1">
+                                    <span class="block font-medium" x-text="subject.code + ' — ' + subject.name"></span>
+                                    <span class="text-sm text-muted" x-show="subject.units" x-text="subject.units + ' units'"></span>
+                                </span>
+                            </label>
+                        </template>
                     </div>
-                    <p class="ui-error" x-show="errors.password_confirmation" x-text="errors.password_confirmation" role="alert"></p>
-                </x-ui.field>
+                </div>
+
+                <div x-show="!subjectsLoading" class="space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">Other Available Subjects</h3>
+                        <button type="button" class="text-sm font-medium text-brand hover:underline" @click="toggleBrowseAll()" x-text="browseAllSubjects ? 'Show department subjects only' : 'Browse all available subjects'"></button>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="subject in otherSubjects" :key="'other-' + subject.id">
+                            <label class="flex min-h-[3.25rem] cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
+                                <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :value="String(subject.id)" :checked="isSubjectSelected(subject.id)" @change="toggleSubject(subject.id)">
+                                <span class="flex-1">
+                                    <span class="block font-medium" x-text="subject.code + ' — ' + subject.name"></span>
+                                    <span class="text-sm text-muted" x-show="subject.units" x-text="subject.units + ' units'"></span>
+                                </span>
+                            </label>
+                        </template>
+                        <p x-show="otherSubjects.length === 0 && !subjectsLoading" class="text-sm text-muted">No additional subjects match your search.</p>
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-line bg-surface-2 px-4 py-4">
+                    <h3 class="text-sm font-semibold">Your Selected Subjects</h3>
+                    <template x-if="selectedSubjectsList.length === 0">
+                        <p class="mt-2 text-sm text-muted">No subjects selected yet.</p>
+                    </template>
+                    <ol x-show="selectedSubjectsList.length > 0" class="mt-3 space-y-2">
+                        <template x-for="(subject, index) in selectedSubjectsList" :key="'sel-' + subject.id">
+                            <li class="flex items-center justify-between gap-3 text-sm">
+                                <span x-text="(index + 1) + '. ' + subject.code + ' — ' + subject.name"></span>
+                                <button type="button" class="text-danger-ink hover:underline" @click="toggleSubject(subject.id)">Remove</button>
+                            </li>
+                        </template>
+                    </ol>
+                    <p class="mt-3 text-sm font-medium">Total Selected: <span x-text="form.subject_ids.length"></span></p>
+                </div>
+
+                <p class="ui-error" x-show="errors.subject_ids" x-text="errors.subject_ids" role="alert"></p>
+            </div>
+
+            {{-- Step 5: Review & Account --}}
+            <div x-show="step === 5" x-cloak class="space-y-6">
+                <div class="ui-card ui-card-pad space-y-5">
+                    <h2 class="text-lg font-semibold">Review Your Registration</h2>
+
+                    <div class="space-y-4 text-sm">
+                        <div>
+                            <h3 class="font-semibold">Student Information</h3>
+                            <p class="mt-1" x-text="reviewFullName"></p>
+                            <p class="text-muted">Student No.: <span x-text="form.student_id"></span></p>
+                            <p class="text-muted" x-text="form.email"></p>
+                        </div>
+
+                        <div>
+                            <h3 class="font-semibold">Academic Information</h3>
+                            <dl class="mt-2 grid gap-1 text-muted">
+                                <div>Program: <span class="text-ink" x-text="selectedProgramName"></span></div>
+                                <div>Year Level: <span class="text-ink" x-text="selectedYearLevelName"></span></div>
+                                <div>Section: <span class="text-ink" x-text="selectedSectionName"></span></div>
+                            </dl>
+                        </div>
+
+                        <div>
+                            <h3 class="font-semibold">Enrolled Subjects</h3>
+                            <ul class="mt-2 space-y-1">
+                                <template x-for="subject in selectedSubjectsList" :key="'review-' + subject.id">
+                                    <li class="text-muted">✓ <span x-text="subject.code + ' — ' + subject.name"></span></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ui-card ui-card-pad space-y-5">
+                    <h2 class="text-lg font-semibold">Account Security</h2>
+
+                    <x-ui.field label="Password *" for="password">
+                        <div class="relative">
+                            <input :type="showPassword ? 'text' : 'password'" id="password" name="password" x-model="form.password" class="ui-input pr-10" autocomplete="new-password" required>
+                            <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
+                                <x-icon name="eye" :size="18" x-show="!showPassword" />
+                                <x-icon name="eye-off" :size="18" x-show="showPassword" x-cloak />
+                            </button>
+                        </div>
+                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-soft">
+                            <div class="h-full rounded-full transition-all" :class="passwordStrengthClass" :style="`width: ${passwordStrengthPercent}%`"></div>
+                        </div>
+                        <p class="ui-help" x-text="passwordStrengthLabel"></p>
+                        <p class="ui-error" x-show="errors.password" x-text="errors.password" role="alert"></p>
+                    </x-ui.field>
+
+                    <x-ui.field label="Confirm Password *" for="password_confirmation">
+                        <div class="relative">
+                            <input :type="showConfirmPassword ? 'text' : 'password'" id="password_confirmation" name="password_confirmation" x-model="form.password_confirmation" class="ui-input pr-10" autocomplete="new-password" required>
+                            <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showConfirmPassword = !showConfirmPassword">
+                                <x-icon name="eye" :size="18" x-show="!showConfirmPassword" />
+                                <x-icon name="eye-off" :size="18" x-show="showConfirmPassword" x-cloak />
+                            </button>
+                        </div>
+                        <p class="ui-error" x-show="errors.password_confirmation" x-text="errors.password_confirmation" role="alert"></p>
+                    </x-ui.field>
+                </div>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <button type="button" class="btn-secondary" x-show="step > 1" @click="back">Back</button>
+                <button type="button" class="btn-secondary" x-show="step > 1" @click="back">← Back</button>
                 <div class="ms-auto flex flex-wrap gap-2">
-                    <button type="button" class="btn-primary" x-show="step < 3" @click="next">Continue</button>
-                    <button type="submit" class="btn-primary" x-show="step === 3" :disabled="submitting">
+                    <button type="button" class="btn-primary" x-show="step < 5" @click="next">Continue →</button>
+                    <button type="submit" class="btn-primary" x-show="step === 5" :disabled="submitting">
                         <span x-show="!submitting">Submit Registration</span>
                         <span x-show="submitting">Submitting...</span>
                     </button>

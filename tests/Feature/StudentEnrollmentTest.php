@@ -43,7 +43,7 @@ class StudentEnrollmentTest extends TestCase
             ->assertOk()
             ->assertSee('My Subjects')
             ->assertSee($structure['subject']->name)
-            ->assertSee($instructor->user->fullName());
+            ->assertSee($structure['subject']->code);
     }
 
     public function test_student_can_view_subject_details(): void

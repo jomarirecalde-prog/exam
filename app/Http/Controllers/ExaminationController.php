@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ExaminationAccessMode;
 use App\Enums\ExamStatus;
 use App\Http\Requests\ImportQuestionCsvRequest;
 use App\Http\Requests\StoreExaminationRequest;
@@ -62,11 +63,18 @@ class ExaminationController extends Controller
                 'duration_minutes' => $data['duration_minutes'],
                 'passing_percentage' => $data['passing_percentage'],
                 'status' => $status,
-                'section_id' => $data['section_ids'][0],
+                'section_id' => $data['section_ids'][0] ?? null,
                 'needs_section_review' => false,
+                'access_mode' => $data['access_mode'] ?? ExaminationAccessMode::SubjectAndSections,
             ]);
 
-            $this->sections->sync($examination, $data['section_ids'], false);
+            if (! empty($data['section_ids'])) {
+                $this->sections->sync($examination, $data['section_ids'], false);
+            }
+
+            if (! empty($data['student_ids'])) {
+                $examination->assignedStudents()->sync($data['student_ids']);
+            }
             $this->syncSettings($examination, $data);
 
             if (! empty($data['questions'])) {
@@ -105,9 +113,18 @@ class ExaminationController extends Controller
                 'duration_minutes' => $data['duration_minutes'],
                 'passing_percentage' => $data['passing_percentage'],
                 'status' => $status,
+                'access_mode' => $data['access_mode'] ?? ExaminationAccessMode::SubjectAndSections,
             ]);
 
-            $this->sections->sync($examination, $data['section_ids']);
+            if (! empty($data['section_ids'])) {
+                $this->sections->sync($examination, $data['section_ids']);
+            } else {
+                $examination->sections()->detach();
+            }
+
+            if (array_key_exists('student_ids', $data)) {
+                $examination->assignedStudents()->sync($data['student_ids'] ?? []);
+            }
             $this->syncSettings($examination, $data);
 
             if (array_key_exists('questions', $data)) {
@@ -290,6 +307,7 @@ class ExaminationController extends Controller
                 'programId' => old('program_id', $primary?->program_id),
                 'yearLevelId' => old('year_level_id', $primary?->year_level_id),
                 'sectionIds' => old('section_ids', $examination?->sections->pluck('id')->all() ?? []),
+                'accessMode' => old('access_mode', $examination?->access_mode?->value ?? ExaminationAccessMode::SubjectAndSections->value),
                 'period' => old('examination_period', $examination?->examination_period?->value ?? 'MIDTERM'),
                 'instructions' => old('instructions', $examination?->instructions ?? ''),
                 'duration' => old('duration_minutes', $examination?->duration_minutes ?? config('examination.default_duration_minutes')),
