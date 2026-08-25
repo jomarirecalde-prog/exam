@@ -311,6 +311,44 @@ class ExaminationSectionAssignmentTest extends TestCase
             ->assertSee('Shared Exam');
     }
 
+    public function test_student_examination_list_shows_submitted_status_after_submission(): void
+    {
+        $structure = $this->academicStructure();
+        $exam = $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'Completed Midterm',
+            'status' => ExamStatus::Published,
+        ]);
+
+        $student = $this->student($structure['sectionA']);
+        $this->createAttempt($exam, $student);
+
+        $this->actingAs($student->user)
+            ->get(route('examinations.index'))
+            ->assertOk()
+            ->assertSee('Completed Midterm')
+            ->assertSee('Submitted')
+            ->assertSee('View Result')
+            ->assertDontSee('Take Exam');
+    }
+
+    public function test_student_examination_list_shows_take_exam_for_unattempted_examination(): void
+    {
+        $structure = $this->academicStructure();
+        $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'Open Midterm',
+            'status' => ExamStatus::Published,
+        ]);
+
+        $student = $this->student($structure['sectionA']);
+
+        $this->actingAs($student->user)
+            ->get(route('examinations.index'))
+            ->assertOk()
+            ->assertSee('Open Midterm')
+            ->assertSee('Take Exam')
+            ->assertDontSee('Submitted');
+    }
+
     public function test_instructor_can_edit_own_examination(): void
     {
         $structure = $this->academicStructure();

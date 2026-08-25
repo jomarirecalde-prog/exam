@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Enums\ExamStatus;
 use App\Enums\QuestionType;
 use App\Models\Examination;
+use App\Models\ExaminationAttempt;
 use App\Models\Grade;
 use App\Models\Program;
 use App\Models\Question;
 use App\Models\Student;
 use App\Services\Examinations\ExaminationAccessService;
 use App\Services\Examinations\ExaminationAttemptService;
+use App\Services\Examinations\ExamResultBreakdownService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,7 +43,18 @@ class PlatformController extends Controller
 
         $exams = $query->paginate(10);
 
-        return view('pages.examinations.index', compact('exams'));
+        $studentAttempts = collect();
+        if ($user->hasRole('student') && $user->student && $exams->isNotEmpty()) {
+            $studentAttempts = ExaminationAttempt::query()
+                ->where('student_id', $user->student->id)
+                ->whereIn('examination_id', $exams->pluck('id'))
+                ->orderByDesc('id')
+                ->get()
+                ->unique('examination_id')
+                ->keyBy('examination_id');
+        }
+
+        return view('pages.examinations.index', compact('exams', 'studentAttempts'));
     }
 
     public function questions(): View
@@ -186,13 +199,18 @@ class PlatformController extends Controller
         ]);
     }
 
-    public function result(Examination $examination, ExaminationAccessService $access): View
-    {
+    public function result(
+        Examination $examination,
+        ExaminationAccessService $access,
+        ExamResultBreakdownService $breakdown,
+    ): View {
         $user = auth()->user();
 
         if (! $user || ! $access->canViewResult($user, $examination)) {
             abort(403, 'You are not authorized to access this examination.');
         }
+
+        $examination->loadMissing('settings');
 
         $student = $user->student;
         $grade = $student
@@ -202,6 +220,7 @@ class PlatformController extends Controller
         return view('pages.examinations.result', [
             'examination' => $examination,
             'grade' => $grade,
+            'breakdown' => $grade ? $breakdown->build($examination, $grade) : null,
         ]);
     }
 

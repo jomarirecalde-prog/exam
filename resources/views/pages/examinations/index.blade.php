@@ -54,9 +54,23 @@
                                     <td>
                                         <div class="flex justify-end gap-2">
                                             @if (auth()->user()->hasRole('student'))
-                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>TAKE EXAM</a>
+                                                @php
+                                                    $attempt = $studentAttempts[$exam->id] ?? null;
+                                                @endphp
+                                                @if ($attempt?->pending_submission_at)
+                                                    <x-ui.badge status="pending">Submission Pending</x-ui.badge>
+                                                @elseif ($attempt?->status === \App\Enums\AttemptStatus::InProgress)
+                                                    <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>Resume</a>
+                                                @elseif ($attempt?->status === \App\Enums\AttemptStatus::LockedViolationLimit)
+                                                    <x-ui.badge status="failed">Locked</x-ui.badge>
+                                                @elseif ($attempt?->status?->isTerminal())
+                                                    <x-ui.badge status="submitted">Submitted</x-ui.badge>
+                                                    <a href="{{ route('examinations.result', $exam) }}" class="btn-ghost btn-sm" wire:navigate>View Result</a>
+                                                @else
+                                                    <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>Take Exam</a>
+                                                @endif
                                             @else
-                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>TAKE EXAM</a>
+                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>Take Exam</a>
                                                 @if (auth()->user()->hasAnyRole(['superadmin', 'admin']) || auth()->user()->can('update', $exam))
                                                     <a href="{{ route('examinations.edit', $exam) }}" class="btn-ghost btn-sm" wire:navigate>Edit</a>
                                                 @endif
