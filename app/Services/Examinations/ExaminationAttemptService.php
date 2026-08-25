@@ -216,6 +216,7 @@ class ExaminationAttemptService
             'warning_count' => (int) $attempt->warning_count,
             'max_warnings' => $attempt->maxWarnings(),
             'remaining_seconds' => $attempt->remainingSeconds(),
+            'duration_seconds' => max(1, (int) $attempt->duration_seconds),
             'locked_at' => $attempt->locked_at?->toIso8601String(),
             'lock_reason' => $attempt->lock_reason,
             'reactivated_at' => $attempt->reactivated_at?->toIso8601String(),

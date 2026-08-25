@@ -16,6 +16,7 @@ class ExaminationMonitoringService
 {
     public function __construct(
         protected ExaminationAccessService $access,
+        protected OfflineExamPreparationService $offlinePrep,
     ) {}
 
     /**
@@ -96,7 +97,9 @@ class ExaminationMonitoringService
                 ReactivationWarningMode::Manual => max(0, min($maxWarnings, (int) $manualWarningCount)),
             };
 
-            $attempt->update([
+            $timerReset = $this->timerResetAttributes($attempt);
+
+            $updates = [
                 'status' => AttemptStatus::InProgress,
                 'warning_count' => $newWarnings,
                 'locked_at' => null,
@@ -105,7 +108,15 @@ class ExaminationMonitoringService
                 'reactivated_by' => $user->id,
                 'reactivation_reason' => $reason,
                 'reactivation_count' => (int) $attempt->reactivation_count + 1,
-            ]);
+                ...$timerReset,
+            ];
+
+            if ($attempt->offline_enabled) {
+                $attempt->fill($timerReset);
+                $updates['offline_timing_token'] = $this->offlinePrep->issueTimingToken($attempt);
+            }
+
+            $attempt->update($updates);
 
             ExamReactivationLog::create([
                 'examination_attempt_id' => $attempt->id,
@@ -124,6 +135,21 @@ class ExaminationMonitoringService
     /**
      * @return array<string, mixed>
      */
+    /**
+     * @return array{expires_at: \Illuminate\Support\Carbon, duration_seconds: int}
+     */
+    protected function timerResetAttributes(ExaminationAttempt $attempt): array
+    {
+        $attempt->loadMissing('examination');
+        $durationMinutes = max(1, (int) ($attempt->examination->duration_minutes ?: config('examination.default_duration_minutes', 60)));
+        $durationSeconds = max(1, (int) ($attempt->duration_seconds ?: ($durationMinutes * 60)));
+
+        return [
+            'expires_at' => now()->addSeconds($durationSeconds),
+            'duration_seconds' => $durationSeconds,
+        ];
+    }
+
     protected function formatAttemptRow(ExaminationAttempt $attempt, Examination $examination): array
     {
         $student = $attempt->student;

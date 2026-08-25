@@ -1079,6 +1079,8 @@ window.examTaking = function examTaking(config) {
         lastSyncAt: null,
         pendingSyncCount: 0,
         timingToken: initialAttempt?.offline_timing_token || null,
+        durationSeconds: initialAttempt?.duration_seconds || config.remaining || null,
+        reactivatedAt: initialAttempt?.reactivated_at || null,
         timerState: null,
         syncUrl: config.urls?.sync || null,
         submitOfflineUrl: config.urls?.submitOffline || null,
@@ -1087,7 +1089,7 @@ window.examTaking = function examTaking(config) {
         lastSavedAt: '',
         bootstrapError: '',
 
-        init() {
+        async init() {
             if (this.offlineOnly) {
                 this.bootstrapFromLocalPackage();
                 return;
@@ -1095,10 +1097,12 @@ window.examTaking = function examTaking(config) {
 
             this.hydrateFromAttempt(initialAttempt);
             this.bindNetworkListeners();
-            this.restoreLocalState();
 
             if (initialAttempt?.reactivated_at) {
-                window.toast?.('Your examination has been reactivated by your instructor. You may continue from your saved progress.', 'success');
+                await this.applyReactivationTimerReset(initialAttempt);
+                window.toast?.('Your examination has been reactivated by your instructor. The timer has been reset to the full duration.', 'success');
+            } else {
+                await this.restoreLocalState();
             }
 
             if (this.phase === 'starting') {
@@ -1233,6 +1237,50 @@ window.examTaking = function examTaking(config) {
             await this.onExamActive();
         },
 
+        async applyReactivationTimerReset(attempt) {
+            if (!attempt) {
+                return;
+            }
+
+            this.reactivatedAt = attempt.reactivated_at || this.reactivatedAt;
+            const fullSeconds = attempt.duration_seconds ?? attempt.remaining_seconds ?? this.durationSeconds ?? this.remaining;
+
+            if (fullSeconds > 0) {
+                this.remaining = fullSeconds;
+                this.durationSeconds = fullSeconds;
+            }
+
+            if (attempt.offline_timing_token) {
+                this.timingToken = attempt.offline_timing_token;
+            }
+
+            if (!this.attemptId) {
+                return;
+            }
+
+            if (this.timingToken) {
+                this.timerState = createTimerState({
+                    attemptId: this.attemptId,
+                    remainingSeconds: this.remaining,
+                    timingToken: this.timingToken,
+                });
+                await persistTimer(this.timerState);
+            } else {
+                this.timerState = null;
+                await examOfflineDb.remove(examOfflineDb.STORES.timerState, this.attemptId);
+            }
+
+            await persistExamProgress(this.attemptId, {
+                examination_id: this.examinationId,
+                student_id: this.studentId,
+                phase: this.phase === 'locked' ? 'active' : this.phase,
+                status: 'IN_PROGRESS',
+                warning_count: this.warningCount,
+                remaining_seconds: this.remaining,
+                lock_reason: null,
+            });
+        },
+
         async restoreLocalState() {
             if (!this.examinationId || !this.studentId) {
                 return;
@@ -1248,14 +1296,16 @@ window.examTaking = function examTaking(config) {
                 }
                 if (this.attemptId) {
                     const localState = await getAttemptState(this.attemptId);
-                    if (localState?.phase === 'locked' || localState?.status === 'LOCKED_VIOLATION_LIMIT') {
+                    const skipStaleLocalState = Boolean(this.reactivatedAt);
+
+                    if (!skipStaleLocalState && (localState?.phase === 'locked' || localState?.status === 'LOCKED_VIOLATION_LIMIT')) {
                         this.phase = 'locked';
                         this.warningCount = localState.warning_count ?? this.warningCount;
                         this.lockReason = localState.lock_reason || this.lockReason;
-                    } else if (localState?.phase === 'pending_submission') {
+                    } else if (!skipStaleLocalState && localState?.phase === 'pending_submission') {
                         this.phase = 'pending_submission';
                         this.pendingSubmission = true;
-                    } else if (localState?.phase === 'active' && this.phase !== 'active') {
+                    } else if (!skipStaleLocalState && localState?.phase === 'active' && this.phase !== 'active') {
                         this.phase = 'resume';
                         this.current = localState.current || this.current;
                         this.lastSavedAt = localState.last_saved_at
@@ -1263,10 +1313,12 @@ window.examTaking = function examTaking(config) {
                             : '';
                     }
 
-                    const timer = await loadTimer(this.attemptId);
-                    if (timer && (this.phase === 'active' || this.phase === 'resume')) {
-                        this.timerState = timer;
-                        this.remaining = tickTimer(timer);
+                    if (!skipStaleLocalState) {
+                        const timer = await loadTimer(this.attemptId);
+                        if (timer && (this.phase === 'active' || this.phase === 'resume')) {
+                            this.timerState = timer;
+                            this.remaining = tickTimer(timer);
+                        }
                     }
                     const summary = await getQueueSummary();
                     this.pendingSyncCount = summary.pendingCount;
@@ -1363,7 +1415,23 @@ window.examTaking = function examTaking(config) {
                     return;
                 }
                 if (result.attempt) {
+                    const previousReactivatedAt = this.reactivatedAt;
                     this.hydrateFromAttempt(result.attempt);
+                    if (
+                        result.attempt.reactivated_at
+                        && result.attempt.reactivated_at !== previousReactivatedAt
+                    ) {
+                        await this.applyReactivationTimerReset(result.attempt);
+                        if (this.phase === 'locked') {
+                            this.phase = 'active';
+                            this.lockReason = '';
+                            await this.onExamActive();
+                        } else if (this.phase === 'active') {
+                            clearInterval(this.timerId);
+                            await this.onExamActive();
+                        }
+                        window.toast?.('Your examination has been reactivated. The timer has been reset to the full duration.', 'success');
+                    }
                     if (result.attempt.status === 'LOCKED_VIOLATION_LIMIT') {
                         this.phase = 'locked';
                         clearInterval(this.timerId);
@@ -1419,6 +1487,8 @@ window.examTaking = function examTaking(config) {
             this.warningCount = attempt.warning_count || 0;
             this.lockReason = attempt.lock_reason || '';
             this.remaining = attempt.remaining_seconds ?? this.remaining;
+            this.durationSeconds = attempt.duration_seconds ?? this.durationSeconds ?? this.remaining;
+            this.reactivatedAt = attempt.reactivated_at ?? this.reactivatedAt;
             this.timingToken = attempt.offline_timing_token || this.timingToken;
             if (attempt.pending_submission_at) {
                 this.pendingSubmission = true;

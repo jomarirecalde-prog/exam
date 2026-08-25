@@ -218,6 +218,32 @@ class ExaminationPolicyViolationTest extends TestCase
             ->assertOk();
     }
 
+    public function test_reactivate_resets_examination_timer_to_full_duration(): void
+    {
+        ['attempt' => $attempt, 'instructorUser' => $instructorUser] = $this->lockedAttempt();
+
+        $attempt->update([
+            'expires_at' => now()->addMinutes(5),
+            'duration_seconds' => 3600,
+        ]);
+
+        $this->travel(10)->minutes();
+
+        $this->actingAs($instructorUser)
+            ->postJson(route('monitoring.reactivate', $attempt), [
+                'reactivation_reason' => 'False detection due to technical issue',
+                'warning_mode' => 'reset',
+            ])
+            ->assertOk();
+
+        $attempt->refresh();
+
+        $this->assertSame(3600, (int) $attempt->duration_seconds);
+        $this->assertGreaterThanOrEqual(3590, $attempt->remainingSeconds());
+        $this->assertLessThanOrEqual(3600, $attempt->remainingSeconds());
+        $this->assertTrue($attempt->expires_at->greaterThan(now()->addMinutes(59)));
+    }
+
     public function test_can_reactivate_attempt_locked_by_warning_count_without_status(): void
     {
         ['attempt' => $attempt, 'instructorUser' => $instructorUser] = $this->lockedAttempt();
