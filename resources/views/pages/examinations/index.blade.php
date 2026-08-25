@@ -54,9 +54,9 @@
                                     <td>
                                         <div class="flex justify-end gap-2">
                                             @if (auth()->user()->hasRole('student'))
-                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>View</a>
+                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>TAKE EXAM</a>
                                             @else
-                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>View</a>
+                                                <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm" wire:navigate>TAKE EXAM</a>
                                                 @if (auth()->user()->hasAnyRole(['superadmin', 'admin']) || auth()->user()->can('update', $exam))
                                                     <a href="{{ route('examinations.edit', $exam) }}" class="btn-ghost btn-sm" wire:navigate>Edit</a>
                                                 @endif

@@ -69,6 +69,38 @@ class ExaminationSectionAssignmentTest extends TestCase
         $this->assertEquals([$structure['sectionA']->id], $exam->sections()->pluck('sections.id')->all());
     }
 
+    public function test_admin_can_publish_an_examination_with_questions(): void
+    {
+        $structure = $this->academicStructure();
+
+        $this->actingAs($this->admin())->postJson(route('examinations.store'), $this->payload($structure, [
+            'title' => 'Exam With Questions',
+            'section_ids' => [$structure['sectionA']->id],
+            'status' => ExamStatus::Published->value,
+            'questions' => [
+                [
+                    'type' => 'multiple_choice',
+                    'text' => 'What is 2 + 2?',
+                    'points' => 1,
+                    'difficulty' => 'Easy',
+                    'topic' => 'Math',
+                    'correctAnswer' => 'B',
+                    'choices' => [
+                        ['id' => 'A', 'text' => '3'],
+                        ['id' => 'B', 'text' => '4'],
+                    ],
+                ],
+            ],
+        ]))->assertOk();
+
+        $exam = Examination::query()->where('title', 'Exam With Questions')->first();
+
+        $this->assertNotNull($exam);
+        $this->assertSame(1, $exam->examQuestions()->count());
+        $this->assertNotNull($exam->examQuestions()->first()?->examination_version_id);
+        $this->assertSame(1, $exam->versions()->count());
+    }
+
     public function test_admin_can_assign_multiple_sections_without_duplicates(): void
     {
         $structure = $this->academicStructure();

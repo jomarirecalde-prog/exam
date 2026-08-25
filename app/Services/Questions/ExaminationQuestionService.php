@@ -4,6 +4,7 @@ namespace App\Services\Questions;
 
 use App\Models\Examination;
 use App\Models\ExaminationQuestion;
+use App\Models\ExaminationVersion;
 use App\Models\Question;
 use App\Models\QuestionChoice;
 use Illuminate\Support\Str;
@@ -15,6 +16,7 @@ class ExaminationQuestionService
      */
     public function sync(Examination $examination, array $questions, ?int $instructorId): void
     {
+        $version = $this->currentVersion($examination);
         $existing = $examination->examQuestions()->with('question.choices')->get();
         $existingByOrder = $existing->keyBy('order');
         $keptQuestionIds = [];
@@ -30,6 +32,7 @@ class ExaminationQuestionService
                 $question = $this->createQuestion($payload, $examination->subject_id, $instructorId);
                 ExaminationQuestion::create([
                     'examination_id' => $examination->id,
+                    'examination_version_id' => $version->id,
                     'question_id' => $question->id,
                     'order' => $order,
                 ]);
@@ -47,6 +50,24 @@ class ExaminationQuestionService
             });
 
         $examination->update(['total_items' => count($questions)]);
+    }
+
+    protected function currentVersion(Examination $examination): ExaminationVersion
+    {
+        $versionNumber = max(1, (int) ($examination->current_version ?? 1));
+
+        $version = $examination->versions()
+            ->where('version_number', $versionNumber)
+            ->first();
+
+        if ($version) {
+            return $version;
+        }
+
+        return ExaminationVersion::create([
+            'examination_id' => $examination->id,
+            'version_number' => $versionNumber,
+        ]);
     }
 
     /**
