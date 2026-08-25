@@ -64,8 +64,7 @@ class ExaminationMonitoringTest extends TestCase
             ->get(route('monitoring.show', $data['examination']))
             ->assertOk()
             ->assertSee('Policy Monitoring Exam')
-            ->assertSee('Back to Examinations')
-            ->assertSee('Live Activity');
+            ->assertSee('Back to Examinations');
     }
 
     public function test_unauthorized_instructor_cannot_enter_examination_monitoring_page(): void

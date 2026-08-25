@@ -77,8 +77,7 @@
                 </div>
             </section>
 
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <x-ui.card>
+            <x-ui.card>
                     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
                         <div class="flex flex-wrap items-center gap-2">
                             <input
@@ -208,29 +207,7 @@
                             </article>
                         </template>
                     </div>
-                </x-ui.card>
-
-                <aside class="ui-card ui-card-pad h-fit xl:sticky xl:top-6">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="font-semibold">Live Activity</h3>
-                        <button type="button" class="text-xs text-muted hover:text-ink" @click="showAllActivity = !showAllActivity" x-text="showAllActivity ? 'Show recent' : 'Show all'"></button>
-                    </div>
-                    <div class="mt-4 max-h-[520px] space-y-3 overflow-y-auto">
-                        <template x-if="visibleActivities.length === 0">
-                            <p class="text-sm text-muted">Activity will appear here as students progress.</p>
-                        </template>
-                        <template x-for="item in visibleActivities" :key="item.id">
-                            <div class="border-b border-line pb-3 last:border-0">
-                                <p class="text-xs tabular-nums text-muted" x-text="item.occurred_at_label"></p>
-                                <p class="mt-1 text-sm">
-                                    <span class="font-medium" x-text="item.student_name"></span>
-                                    <span x-text="item.message"></span>
-                                </p>
-                            </div>
-                        </template>
-                    </div>
-                </aside>
-            </div>
+            </x-ui.card>
         </div>
 
         @include('pages.monitoring._modals')
