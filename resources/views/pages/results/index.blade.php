@@ -1,12 +1,23 @@
 <x-app-layout>
+    @php
+        $isStudent = auth()->user()?->hasRole('student');
+    @endphp
+
     <div class="ui-page">
-        <x-ui.page-header title="Examination Results" subtitle="Released scores and pending grades." />
+        <x-ui.page-header
+            title="Examination Results"
+            :subtitle="$isStudent ? 'Your released examination scores.' : 'Released scores and pending grades.'"
+        />
         <x-ui.toolbar placeholder="Search results" />
         <div class="ui-table-wrap mt-4">
             @if ($grades->isEmpty())
                 <div class="px-5">
                     <x-ui.empty-state title="No results yet." icon="bar-chart-3">
-                        Results appear here after grading and release.
+                        @if ($isStudent)
+                            Your scores will appear here once your instructor releases them.
+                        @else
+                            Results appear here after grading and release.
+                        @endif
                     </x-ui.empty-state>
                 </div>
             @else
@@ -14,8 +25,13 @@
                     <table class="ui-table">
                         <thead>
                             <tr>
-                                <th>Student</th>
+                                @unless ($isStudent)
+                                    <th>Student</th>
+                                @endunless
                                 <th>Exam</th>
+                                @if ($isStudent)
+                                    <th>Subject</th>
+                                @endif
                                 <th>Score</th>
                                 <th>Status</th>
                                 <th>Date</th>
@@ -25,8 +41,13 @@
                         <tbody>
                             @foreach ($grades as $grade)
                                 <tr>
-                                    <td class="font-medium">{{ $grade->student?->user?->fullName() ?: $grade->student?->user?->name }}</td>
-                                    <td class="text-muted">{{ $grade->examination?->title }}</td>
+                                    @unless ($isStudent)
+                                        <td class="font-medium">{{ $grade->student?->user?->fullName() ?: $grade->student?->user?->name }}</td>
+                                    @endunless
+                                    <td class="{{ $isStudent ? 'font-medium' : 'text-muted' }}">{{ $grade->examination?->title }}</td>
+                                    @if ($isStudent)
+                                        <td class="text-muted">{{ $grade->examination?->subject?->code }}</td>
+                                    @endif
                                     <td>{{ rtrim(rtrim(number_format($grade->percentage, 1), '0'), '.') }}%</td>
                                     <td>
                                         <x-ui.badge :status="$grade->passed ? 'passed' : 'failed'" />

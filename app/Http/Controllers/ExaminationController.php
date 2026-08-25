@@ -374,6 +374,7 @@ class ExaminationController extends Controller
                 'allow_pending_offline_submission' => (bool) ($data['allow_pending_offline_submission'] ?? true),
                 'max_offline_duration_minutes' => $data['max_offline_duration_minutes'] ?? null,
                 'sync_grace_period_minutes' => (int) ($data['sync_grace_period_minutes'] ?? 15),
+                'show_score_immediately' => (bool) ($data['show_score_immediately'] ?? true),
             ]
         );
     }

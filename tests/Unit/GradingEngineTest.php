@@ -130,6 +130,30 @@ class GradingEngineTest extends TestCase
         $this->assertSame(0.0, $result->earnedPoints);
     }
 
+    public function test_apply_to_attempt_releases_fully_graded_results(): void
+    {
+        $question = $this->makeQuestion(QuestionType::MultipleChoice, 'a', 1);
+        $attempt = $this->makeAttempt($question, 'a');
+
+        $grade = $this->engine->applyToAttempt($attempt);
+
+        $this->assertTrue($grade->is_released);
+        $this->assertNotNull($grade->released_at);
+        $this->assertSame(ResultStatus::Passed, $grade->status);
+    }
+
+    public function test_apply_to_attempt_does_not_release_pending_manual_grading(): void
+    {
+        $question = $this->makeQuestion(QuestionType::Essay, null, 5);
+        $attempt = $this->makeAttempt($question, 'Sample essay response');
+
+        $grade = $this->engine->applyToAttempt($attempt);
+
+        $this->assertFalse($grade->is_released);
+        $this->assertNull($grade->released_at);
+        $this->assertSame(ResultStatus::PendingGrading, $grade->status);
+    }
+
     protected function makeQuestion(QuestionType $type, mixed $correct, float $points): Question
     {
         return Question::create([
