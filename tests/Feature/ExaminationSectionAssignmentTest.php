@@ -278,6 +278,66 @@ class ExaminationSectionAssignmentTest extends TestCase
             ->assertSee('Shared Exam');
     }
 
+    public function test_instructor_can_edit_own_examination(): void
+    {
+        $structure = $this->academicStructure();
+        $instructor = $this->instructor($structure['department']);
+        $instructor->user->assignRole(UserRole::Instructor->value);
+
+        $exam = $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'Instructor Exam',
+            'instructor_id' => $instructor->id,
+        ]);
+
+        $this->actingAs($instructor->user)
+            ->get(route('examinations.edit', $exam))
+            ->assertOk()
+            ->assertSee('Edit Examination')
+            ->assertSee('Instructor Exam');
+    }
+
+    public function test_instructor_cannot_edit_another_instructors_examination(): void
+    {
+        $structure = $this->academicStructure();
+        $instructor = $this->instructor($structure['department']);
+        $otherInstructor = $this->instructor($structure['department']);
+        $instructor->user->assignRole(UserRole::Instructor->value);
+
+        $exam = $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'Other Instructor Exam',
+            'instructor_id' => $otherInstructor->id,
+        ]);
+
+        $this->actingAs($instructor->user)
+            ->get(route('examinations.edit', $exam))
+            ->assertForbidden();
+    }
+
+    public function test_instructor_examination_list_shows_only_own_examinations(): void
+    {
+        $structure = $this->academicStructure();
+        $instructor = $this->instructor($structure['department']);
+        $otherInstructor = $this->instructor($structure['department']);
+        $instructor->user->assignRole(UserRole::Instructor->value);
+
+        $ownExam = $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'My Midterm',
+            'instructor_id' => $instructor->id,
+        ]);
+
+        $this->makeExam($structure, [$structure['sectionB']->id], [
+            'title' => 'Someone Else Midterm',
+            'instructor_id' => $otherInstructor->id,
+        ]);
+
+        $this->actingAs($instructor->user)
+            ->get(route('examinations.index'))
+            ->assertOk()
+            ->assertSee('My Midterm')
+            ->assertDontSee('Someone Else Midterm')
+            ->assertSee(route('examinations.edit', $ownExam), false);
+    }
+
     public function test_students_cannot_open_the_create_form(): void
     {
         $structure = $this->academicStructure();

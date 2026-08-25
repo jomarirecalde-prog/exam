@@ -5,7 +5,6 @@
 @php
     $map = [
         'draft' => ['label' => 'Draft', 'class' => 'bg-brand-soft text-muted'],
-        'scheduled' => ['label' => 'Scheduled', 'class' => 'bg-info-soft text-info-ink'],
         'published' => ['label' => 'Published', 'class' => 'bg-info-soft text-info-ink'],
         'active' => ['label' => 'Active', 'class' => 'bg-success-soft text-success-ink'],
         'closed' => ['label' => 'Closed', 'class' => 'bg-brand-soft text-muted'],

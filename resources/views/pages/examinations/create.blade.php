@@ -343,21 +343,6 @@
                 </section>
 
                 <section x-show="step === 4" x-cloak>
-                    <h2 class="ui-section">Schedule</h2>
-                    <div class="mt-6 grid gap-5 sm:grid-cols-3">
-                        <x-ui.field label="Examination Date">
-                            <input class="ui-input" type="date" x-model="form.date">
-                        </x-ui.field>
-                        <x-ui.field label="Start Time">
-                            <input class="ui-input" type="time" x-model="form.start">
-                        </x-ui.field>
-                        <x-ui.field label="End Time">
-                            <input class="ui-input" type="time" x-model="form.end">
-                        </x-ui.field>
-                    </div>
-                </section>
-
-                <section x-show="step === 5" x-cloak>
                     <h2 class="ui-section">Review</h2>
                     <x-ui.card class="mt-6 space-y-3">
                         <p><span class="text-muted">Title</span> · <span class="font-medium" x-text="form.title || '—'"></span></p>
@@ -381,8 +366,8 @@
                             <span x-show="!saving">Save Draft</span>
                             <span x-show="saving" x-cloak>Saving…</span>
                         </x-ui.button>
-                        <x-ui.button x-show="step < 5" @click="next()">Continue</x-ui.button>
-                        <x-ui.button x-show="step === 5" x-cloak @click="publish()" x-bind:disabled="saving || publishing">
+                        <x-ui.button x-show="step < 4" @click="next()">Continue</x-ui.button>
+                        <x-ui.button x-show="step === 4" x-cloak @click="publish()" x-bind:disabled="saving || publishing">
                             <span x-show="!publishing">Publish Examination</span>
                             <span x-show="publishing" x-cloak>Publishing…</span>
                         </x-ui.button>

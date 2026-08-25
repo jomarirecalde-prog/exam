@@ -46,6 +46,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::get('/examinations', [PlatformController::class, 'examinations'])->name('examinations.index');
+    Route::middleware('role:student')->group(function () {
+        Route::get('/my-subjects', [\App\Http\Controllers\StudentEnrollmentController::class, 'index'])->name('student.enrollment.index');
+        Route::get('/my-subjects/{subject}', [\App\Http\Controllers\StudentEnrollmentController::class, 'show'])->name('student.enrollment.show');
+    });
     Route::middleware('role:superadmin,admin,instructor')->group(function () {
         Route::get('/my-classes', [\App\Http\Controllers\InstructorTeachingController::class, 'index'])->name('instructor.teaching.index');
         Route::get('/my-classes/{subject}', [\App\Http\Controllers\InstructorTeachingController::class, 'show'])->name('instructor.teaching.show');
@@ -72,8 +76,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/question-bank/export-csv', [\App\Http\Controllers\QuestionController::class, 'exportCsv'])->name('questions.export-csv');
         Route::post('/question-bank/error-report', [\App\Http\Controllers\QuestionController::class, 'errorReport'])->name('questions.error-report');
     });
-    Route::get('/schedules', [PlatformController::class, 'schedules'])->name('schedules.index');
-
     Route::get('/results', [PlatformController::class, 'results'])->name('results.index');
     Route::get('/reports', [PlatformController::class, 'reports'])->name('reports.index');
     Route::get('/monitoring', [PlatformController::class, 'monitoring'])->name('monitoring.index');

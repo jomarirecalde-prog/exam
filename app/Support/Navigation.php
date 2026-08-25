@@ -69,11 +69,12 @@ class Navigation
             'instructor.teaching.index' => [['My Classes']],
             'instructor.teaching.show' => [['My Classes', 'instructor.teaching.index'], ['Subject']],
             'instructor.teaching.section' => [['My Classes', 'instructor.teaching.index'], ['Section Roster']],
+            'student.enrollment.index' => [['My Subjects']],
+            'student.enrollment.show' => [['My Subjects', 'student.enrollment.index'], ['Subject Details']],
             'examinations.index' => [['Examinations'], ['All Examinations']],
             'examinations.create' => [['Examinations', 'examinations.index'], ['Create Examination']],
             'examinations.edit' => [['Examinations', 'examinations.index'], ['Edit Examination']],
             'questions.index' => [['Examinations'], ['Question Bank']],
-            'schedules.index' => [['Examinations'], ['Schedules']],
             'results.index' => [['Results'], ['Examination Results']],
             'reports.index' => [['Results'], ['Reports']],
             'monitoring.index' => [['Monitoring']],
@@ -98,6 +99,7 @@ class Navigation
         if ($user->hasRole('student')) {
             return [
                 ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => 'layout-dashboard'],
+                ['label' => 'My Subjects', 'route' => 'student.enrollment.index', 'icon' => 'book-open'],
                 ['label' => 'Examinations', 'route' => 'examinations.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Results', 'route' => 'results.index', 'icon' => 'bar-chart-3'],
                 ['label' => 'Settings', 'route' => 'settings.index', 'icon' => 'settings'],
@@ -142,7 +144,6 @@ class Navigation
                 $user->hasAnyRole(['superadmin', 'admin'])
                     ? null
                     : ['label' => 'Question Bank', 'route' => 'questions.index', 'icon' => 'file-question'],
-                ['label' => 'Schedules', 'route' => 'schedules.index', 'icon' => 'calendar'],
             ])),
         ];
 

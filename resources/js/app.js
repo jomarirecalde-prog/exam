@@ -370,8 +370,7 @@ window.examWizard = function examWizard(config = {}) {
             { id: 1, key: '01', label: 'Information' },
             { id: 2, key: '02', label: 'Settings' },
             { id: 3, key: '03', label: 'Questions' },
-            { id: 4, key: '04', label: 'Schedule' },
-            { id: 5, key: '05', label: 'Review' },
+            { id: 4, key: '04', label: 'Review' },
         ],
         questions: Array.isArray(config.questions)
             ? config.questions
@@ -408,9 +407,6 @@ window.examWizard = function examWizard(config = {}) {
             randomize: incomingForm.randomize ?? true,
             backNav: incomingForm.backNav ?? true,
             autoSubmit: incomingForm.autoSubmit ?? true,
-            date: incomingForm.date || '',
-            start: incomingForm.start || '08:00',
-            end: incomingForm.end || '10:00',
         },
         init() {
             if (this.filtersReady()) {
@@ -617,9 +613,6 @@ window.examWizard = function examWizard(config = {}) {
                 randomize_questions: Boolean(this.form.randomize),
                 allow_back_navigation: Boolean(this.form.backNav),
                 auto_submit_on_expire: Boolean(this.form.autoSubmit),
-                examination_date: this.form.date || null,
-                start_time: this.form.start || null,
-                end_time: this.form.end || null,
                 status,
                 questions: this.questions.map(({ id, ...question }) => question),
             };
@@ -654,7 +647,7 @@ window.examWizard = function examWizard(config = {}) {
             if (this.step === 1 && !this.validateInformation()) {
                 return;
             }
-            this.step = Math.min(5, this.step + 1);
+            this.step = Math.min(4, this.step + 1);
         },
         back() {
             this.step = Math.max(1, this.step - 1);

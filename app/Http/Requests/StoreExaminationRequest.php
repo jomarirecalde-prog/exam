@@ -38,13 +38,10 @@ class StoreExaminationRequest extends FormRequest
             'examination_period' => ['required', Rule::enum(ExaminationPeriod::class)],
             'duration_minutes' => ['required', 'integer', 'min:1', 'max:600'],
             'passing_percentage' => ['required', 'numeric', 'min:1', 'max:100'],
-            'examination_date' => ['nullable', 'date'],
-            'start_time' => ['nullable', 'date_format:H:i'],
-            'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],
             'randomize_questions' => ['sometimes', 'boolean'],
             'allow_back_navigation' => ['sometimes', 'boolean'],
             'auto_submit_on_expire' => ['sometimes', 'boolean'],
-            'status' => ['sometimes', Rule::in([ExamStatus::Draft->value, ExamStatus::Published->value, ExamStatus::Scheduled->value])],
+            'status' => ['sometimes', Rule::in([ExamStatus::Draft->value, ExamStatus::Published->value])],
             'questions' => ['sometimes', 'array'],
             'questions.*.type' => ['required_with:questions', 'string', Rule::in(['multiple_choice', 'true_false', 'identification', 'essay'])],
             'questions.*.text' => ['required_with:questions', 'string'],
@@ -68,7 +65,6 @@ class StoreExaminationRequest extends FormRequest
             'section_ids.*.distinct' => 'Duplicate section assignments are not allowed.',
             'semester_id.exists' => 'Select a semester that belongs to the chosen academic year.',
             'year_level_id.exists' => 'Select a year level that belongs to the chosen program.',
-            'end_time.after' => 'The end time must be after the start time.',
         ];
     }
 
@@ -98,9 +94,6 @@ class StoreExaminationRequest extends FormRequest
             'randomize_questions' => $this->boolean('randomize_questions'),
             'allow_back_navigation' => $this->boolean('allow_back_navigation'),
             'auto_submit_on_expire' => $this->boolean('auto_submit_on_expire'),
-            'start_time' => filled($this->input('start_time')) ? substr((string) $this->input('start_time'), 0, 5) : null,
-            'end_time' => filled($this->input('end_time')) ? substr((string) $this->input('end_time'), 0, 5) : null,
-            'examination_date' => filled($this->input('examination_date')) ? $this->input('examination_date') : null,
             'status' => strtoupper((string) $this->input('status', ExamStatus::Draft->value)),
         ]);
     }

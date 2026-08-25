@@ -1,6 +1,6 @@
 <x-app-layout>
     <div class="ui-page">
-        <x-ui.page-header title="All Examinations" subtitle="Create, schedule, and review examinations.">
+        <x-ui.page-header title="All Examinations" subtitle="Create and review examinations.">
             @if (auth()->user()->hasAnyRole(['superadmin', 'admin', 'instructor']))
                 <x-ui.button :href="route('examinations.create')" icon="plus">Create Examination</x-ui.button>
             @endif
@@ -10,7 +10,7 @@
             <select class="ui-input w-auto py-2 text-sm" aria-label="Filter status">
                 <option>All statuses</option>
                 <option>Draft</option>
-                <option>Scheduled</option>
+                <option>Published</option>
                 <option>Active</option>
                 <option>Closed</option>
             </select>
@@ -56,7 +56,9 @@
                                             @if (auth()->user()->hasRole('student'))
                                                 <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm">View</a>
                                             @else
-                                                <a href="{{ route('examinations.edit', $exam) }}" class="btn-ghost btn-sm">Edit</a>
+                                                @can('update', $exam)
+                                                    <a href="{{ route('examinations.edit', $exam) }}" class="btn-ghost btn-sm">Edit</a>
+                                                @endcan
                                                 <a href="{{ route('examinations.take', $exam) }}" class="btn-ghost btn-sm">View</a>
                                             @endif
                                             <button type="button" class="btn-icon h-8 w-8" aria-label="More"><x-icon name="more-horizontal" :size="16" /></button>

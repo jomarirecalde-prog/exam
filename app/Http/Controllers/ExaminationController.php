@@ -61,9 +61,6 @@ class ExaminationController extends Controller
                 'examination_period' => $data['examination_period'],
                 'duration_minutes' => $data['duration_minutes'],
                 'passing_percentage' => $data['passing_percentage'],
-                'examination_date' => $data['examination_date'] ?? null,
-                'start_time' => $data['start_time'] ?? null,
-                'end_time' => $data['end_time'] ?? null,
                 'status' => $status,
                 'section_id' => $data['section_ids'][0],
                 'needs_section_review' => false,
@@ -71,7 +68,6 @@ class ExaminationController extends Controller
 
             $this->sections->sync($examination, $data['section_ids'], false);
             $this->syncSettings($examination, $data);
-            $this->syncSchedule($examination, $data, $status);
 
             if (! empty($data['questions'])) {
                 $this->questions->sync($examination, $data['questions'], $request->user()->instructor?->id);
@@ -87,7 +83,7 @@ class ExaminationController extends Controller
     {
         $this->authorize('update', $examination);
 
-        $examination->load(['sections', 'settings', 'schedule', 'subject']);
+        $examination->load(['sections', 'settings', 'subject']);
 
         return view('pages.examinations.create', $this->formPayload($request, $examination));
     }
@@ -108,15 +104,11 @@ class ExaminationController extends Controller
                 'examination_period' => $data['examination_period'],
                 'duration_minutes' => $data['duration_minutes'],
                 'passing_percentage' => $data['passing_percentage'],
-                'examination_date' => $data['examination_date'] ?? null,
-                'start_time' => $data['start_time'] ?? null,
-                'end_time' => $data['end_time'] ?? null,
                 'status' => $status,
             ]);
 
             $this->sections->sync($examination, $data['section_ids']);
             $this->syncSettings($examination, $data);
-            $this->syncSchedule($examination, $data, $status);
 
             if (array_key_exists('questions', $data)) {
                 $this->questions->sync($examination, $data['questions'] ?? [], $request->user()->instructor?->id);
@@ -305,9 +297,6 @@ class ExaminationController extends Controller
                 'randomize' => old('randomize_questions', $examination?->settings?->randomize_questions ?? true),
                 'backNav' => old('allow_back_navigation', $examination?->settings?->allow_back_navigation ?? true),
                 'autoSubmit' => old('auto_submit_on_expire', $examination?->settings?->auto_submit_on_expire ?? true),
-                'date' => old('examination_date', optional($examination?->examination_date)->format('Y-m-d') ?? ''),
-                'start' => old('start_time', $examination?->start_time ? substr((string) $examination->start_time, 0, 5) : '08:00'),
-                'end' => old('end_time', $examination?->end_time ? substr((string) $examination->end_time, 0, 5) : '10:00'),
             ],
             'errors' => $request->session()->get('errors')?->getBag('default')->toArray() ?? [],
         ];
@@ -326,32 +315,6 @@ class ExaminationController extends Controller
                 'randomize_questions' => (bool) ($data['randomize_questions'] ?? false),
                 'allow_back_navigation' => (bool) ($data['allow_back_navigation'] ?? true),
                 'auto_submit_on_expire' => (bool) ($data['auto_submit_on_expire'] ?? true),
-            ]
-        );
-    }
-
-    protected function syncSchedule(Examination $examination, array $data, ExamStatus $status): void
-    {
-        $from = null;
-        $until = null;
-
-        if (! empty($data['examination_date'])) {
-            if (! empty($data['start_time'])) {
-                $from = $data['examination_date'].' '.$data['start_time'];
-            }
-            if (! empty($data['end_time'])) {
-                $until = $data['examination_date'].' '.$data['end_time'];
-            }
-        }
-
-        $examination->schedule()->updateOrCreate(
-            ['examination_id' => $examination->id],
-            [
-                'available_from' => $from,
-                'available_until' => $until,
-                'published_at' => $status === ExamStatus::Published || $status === ExamStatus::Active
-                    ? ($examination->schedule?->published_at ?? now())
-                    : $examination->schedule?->published_at,
             ]
         );
     }

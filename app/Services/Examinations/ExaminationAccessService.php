@@ -137,48 +137,13 @@ class ExaminationAccessService
     {
         return in_array($examination->status, [
             ExamStatus::Published,
-            ExamStatus::Scheduled,
             ExamStatus::Active,
         ], true);
     }
 
     public function isCurrentlyAvailable(Examination $examination): bool
     {
-        if (! $this->isPublishedForStudents($examination)) {
-            return false;
-        }
-
-        if ($examination->status === ExamStatus::Active) {
-            return true;
-        }
-
-        $schedule = $examination->schedule;
-        $now = now();
-
-        if ($schedule) {
-            if ($schedule->closed_at && $now->gte($schedule->closed_at)) {
-                return false;
-            }
-
-            if ($schedule->available_from && $now->lt($schedule->available_from)) {
-                return false;
-            }
-
-            if ($schedule->available_until && $now->gt($schedule->available_until)) {
-                return false;
-            }
-        }
-
-        if ($examination->examination_date && $examination->start_time && $examination->end_time) {
-            $start = $examination->examination_date->copy()->setTimeFromTimeString((string) $examination->start_time);
-            $end = $examination->examination_date->copy()->setTimeFromTimeString((string) $examination->end_time);
-
-            if ($now->lt($start) || $now->gt($end)) {
-                return false;
-            }
-        }
-
-        return true;
+        return $this->isPublishedForStudents($examination);
     }
 
     public function hasExceededAttempts(Student $student, Examination $examination): bool

@@ -38,14 +38,21 @@ class PlatformController extends Controller
     public function examinations(Request $request): View
     {
         $query = Examination::query()->with(['subject', 'sections'])->latest();
+        $user = $request->user();
 
-        if ($request->user()->hasRole('student')) {
-            $student = $request->user()->student;
+        if ($user->hasRole('student')) {
+            $student = $user->student;
 
             if (! $student) {
                 $query->whereRaw('1 = 0');
             } else {
                 $query->visibleToStudent($student);
+            }
+        } elseif ($user->hasRole('instructor')) {
+            if ($user->instructor) {
+                $query->ownedByInstructor($user->instructor);
+            } else {
+                $query->whereRaw('1 = 0');
             }
         }
 
@@ -59,13 +66,6 @@ class PlatformController extends Controller
         $questions = Question::query()->with('subject')->latest()->paginate(10);
 
         return view('pages.questions.index', compact('questions'));
-    }
-
-    public function schedules(): View
-    {
-        $exams = Examination::query()->with(['subject', 'sections'])->orderBy('examination_date')->paginate(10);
-
-        return view('pages.schedules.index', compact('exams'));
     }
 
     public function results(Request $request): View
@@ -134,7 +134,7 @@ class PlatformController extends Controller
 
     public function take(Examination $examination, ExaminationAccessService $access): View
     {
-        $examination->load(['subject', 'sections', 'settings', 'schedule']);
+        $examination->load(['subject', 'sections', 'settings']);
 
         $user = auth()->user();
 

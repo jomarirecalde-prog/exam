@@ -61,7 +61,7 @@ class DashboardController extends Controller
             ->when(! $user->hasRole('student'), function ($query) {
                 $query->whereNotIn('status', [ExamStatus::Closed, ExamStatus::Archived]);
             })
-            ->orderBy('examination_date')
+            ->orderByDesc('updated_at')
             ->limit(6)
             ->get();
 
@@ -100,7 +100,7 @@ class DashboardController extends Controller
             ],
             'upcomingExams' => $user->hasRole('student')
                 ? $upcoming
-                : Examination::query()->with(['subject', 'sections'])->orderBy('examination_date')->limit(6)->get(),
+                : Examination::query()->with(['subject', 'sections'])->orderByDesc('updated_at')->limit(6)->get(),
             'completedAttempts' => $completed,
             'releasedGrades' => $released,
             'activity' => $activity,
@@ -123,7 +123,7 @@ class DashboardController extends Controller
                 ->with(['subject', 'section'])
                 ->where('instructor_id', $instructor->id)
                 ->whereNotIn('status', [ExamStatus::Closed, ExamStatus::Archived])
-                ->orderBy('examination_date')
+                ->orderByDesc('updated_at')
                 ->limit(6)
                 ->get()
             : collect();

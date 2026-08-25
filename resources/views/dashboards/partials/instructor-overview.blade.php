@@ -70,8 +70,8 @@
             <div class="ui-table-wrap mt-4">
                 @if ($upcomingExams->isEmpty())
                     <div class="px-5">
-                        <x-ui.empty-state title="No upcoming examinations." action="Create Examination" :action-href="route('examinations.create')" icon="calendar">
-                            Schedule an examination to see it here.
+                        <x-ui.empty-state title="No upcoming examinations." action="Create Examination" :action-href="route('examinations.create')" icon="clipboard-list">
+                            Create an examination to see it here.
                         </x-ui.empty-state>
                     </div>
                 @else
@@ -82,7 +82,6 @@
                                     <th>Examination</th>
                                     <th>Subject</th>
                                     <th>Section</th>
-                                    <th>Date</th>
                                     <th>Status</th>
                                     <th></th>
                                 </tr>
@@ -93,7 +92,6 @@
                                         <td class="font-medium">{{ $exam->title }}</td>
                                         <td class="text-muted">{{ $exam->subject?->code }}</td>
                                         <td class="text-muted">{{ $exam->section?->name }}</td>
-                                        <td class="text-muted">{{ optional($exam->examination_date)->format('M j, Y') ?: '—' }}</td>
                                         <td><x-ui.badge :status="$exam->statusKey()" /></td>
                                         <td class="text-right">
                                             <a href="{{ route('examinations.index') }}" class="text-sm font-medium hover:underline">View</a>

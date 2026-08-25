@@ -13,10 +13,7 @@
                         <div>
                             <h3 class="text-base font-semibold">{{ $exam->title }}</h3>
                             <p class="mt-1 text-sm text-muted">{{ $exam->subject?->code }} — {{ $exam->subject?->name }}</p>
-                            <p class="mt-3 text-sm text-muted">
-                                {{ optional($exam->examination_date)->format('F j, Y') ?: 'Schedule to be announced' }}
-                                · {{ $exam->duration_minutes }} minutes
-                            </p>
+                            <p class="mt-3 text-sm text-muted">{{ $exam->duration_minutes }} minutes</p>
                         </div>
                         <x-ui.button :href="route('examinations.take', $exam)" variant="secondary">View Examination</x-ui.button>
                     </article>

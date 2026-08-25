@@ -82,11 +82,6 @@ class Examination extends Model
         return $this->hasOne(ExaminationSetting::class);
     }
 
-    public function schedule(): HasOne
-    {
-        return $this->hasOne(ExamSchedule::class);
-    }
-
     public function versions(): HasMany
     {
         return $this->hasMany(ExaminationVersion::class);
@@ -158,10 +153,14 @@ class Examination extends Model
             ->where('needs_section_review', false)
             ->whereIn('status', [
                 ExamStatus::Published,
-                ExamStatus::Scheduled,
                 ExamStatus::Active,
             ])
             ->assignedToSections($student->accessibleSectionIds());
+    }
+
+    public function scopeOwnedByInstructor(Builder $query, Instructor $instructor): Builder
+    {
+        return $query->where('instructor_id', $instructor->id);
     }
 
     public function isAssignedToSection(int $sectionId): bool
