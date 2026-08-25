@@ -11,6 +11,9 @@ return [
     'max_login_attempts' => (int) env('MAX_LOGIN_ATTEMPTS', 5),
     'lockout_minutes' => (int) env('LOCKOUT_MINUTES', 15),
     'timer_warning_minutes' => [10, 5, 1],
+    'policy_version' => env('EXAM_POLICY_VERSION', '1.0'),
+    'max_violation_warnings' => (int) env('EXAM_MAX_VIOLATION_WARNINGS', 3),
+    'violation_dedup_seconds' => (int) env('EXAM_VIOLATION_DEDUP_SECONDS', 3),
     'institution' => [
         'name' => env('INSTITUTION_NAME', 'Examination Management System'),
         'address' => env('INSTITUTION_ADDRESS', ''),

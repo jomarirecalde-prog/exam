@@ -98,6 +98,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/examinations/{examination}/take', [PlatformController::class, 'take'])->name('examinations.take');
     Route::get('/examinations/{examination}/result', [PlatformController::class, 'result'])->name('examinations.result');
 
+    Route::prefix('examinations/{examination}/attempts')->name('examinations.attempts.')->group(function () {
+        Route::get('/state', [\App\Http\Controllers\ExaminationAttemptController::class, 'state'])->name('state');
+        Route::post('/accept-policy', [\App\Http\Controllers\ExaminationAttemptController::class, 'acceptPolicy'])->name('accept-policy');
+        Route::post('/start', [\App\Http\Controllers\ExaminationAttemptController::class, 'start'])->name('start');
+        Route::post('/answers', [\App\Http\Controllers\ExaminationAttemptController::class, 'saveAnswers'])->name('answers.bulk');
+        Route::post('/answers/{question}', [\App\Http\Controllers\ExaminationAttemptController::class, 'saveAnswer'])->name('answers.store');
+        Route::post('/violations', [\App\Http\Controllers\ExaminationAttemptController::class, 'recordViolation'])->name('violations.store');
+        Route::post('/submit', [\App\Http\Controllers\ExaminationAttemptController::class, 'submit'])->name('submit');
+    });
+
+    Route::middleware('role:superadmin,admin,instructor')->prefix('monitoring')->name('monitoring.')->group(function () {
+        Route::get('/examinations/{examination}/data', [\App\Http\Controllers\ExaminationMonitoringController::class, 'data'])->name('data');
+        Route::get('/attempts/{attempt}/violations', [\App\Http\Controllers\ExaminationMonitoringController::class, 'violations'])->name('violations');
+        Route::post('/attempts/{attempt}/reactivate', [\App\Http\Controllers\ExaminationMonitoringController::class, 'reactivate'])->name('reactivate');
+    });
+
     Route::middleware('role:superadmin,admin,instructor')->group(function () {
         Route::get('/question-bank', [\App\Http\Controllers\QuestionController::class, 'index'])->name('questions.index');
         Route::get('/question-bank/csv-template', [\App\Http\Controllers\QuestionController::class, 'csvTemplate'])->name('questions.csv-template');

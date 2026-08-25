@@ -12,4 +12,25 @@ enum AttemptStatus: string
     case Cancelled = 'CANCELLED';
     case SyncPending = 'SYNC_PENDING';
     case Synced = 'SYNCED';
+    case LockedViolationLimit = 'LOCKED_VIOLATION_LIMIT';
+
+    public function isActive(): bool
+    {
+        return $this === self::InProgress;
+    }
+
+    public function isLocked(): bool
+    {
+        return $this === self::LockedViolationLimit;
+    }
+
+    public function isTerminal(): bool
+    {
+        return in_array($this, [
+            self::Submitted,
+            self::AutoSubmitted,
+            self::Expired,
+            self::Cancelled,
+        ], true);
+    }
 }

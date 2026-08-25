@@ -9,6 +9,7 @@ use App\Models\Program;
 use App\Models\Question;
 use App\Models\Student;
 use App\Services\Examinations\ExaminationAccessService;
+use App\Services\Examinations\ExaminationAttemptService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -73,12 +74,21 @@ class PlatformController extends Controller
         ]);
     }
 
-    public function monitoring(): View
+    public function monitoring(ExaminationAccessService $access): View
     {
-        $active = Examination::query()
+        $user = auth()->user();
+
+        $query = Examination::query()
             ->with(['subject', 'sections'])
-            ->where('status', ExamStatus::Active)
-            ->get();
+            ->whereIn('status', [ExamStatus::Active, ExamStatus::Published]);
+
+        if ($user->hasRole('instructor') && $user->instructor) {
+            $query->ownedByInstructor($user->instructor);
+        } elseif (! $user->hasAnyRole(['superadmin', 'admin'])) {
+            $query->whereRaw('1 = 0');
+        }
+
+        $active = $query->latest()->get();
 
         return view('pages.monitoring.index', compact('active'));
     }
@@ -113,8 +123,11 @@ class PlatformController extends Controller
         ]);
     }
 
-    public function take(Examination $examination, ExaminationAccessService $access): View
-    {
+    public function take(
+        Examination $examination,
+        ExaminationAccessService $access,
+        ExaminationAttemptService $attempts,
+    ): View {
         $examination->load(['subject', 'sections', 'settings']);
 
         $user = auth()->user();
@@ -133,10 +146,30 @@ class PlatformController extends Controller
             $questions = collect($this->sampleQuestions());
         }
 
+        $attemptState = null;
+        if ($user->student) {
+            $attempt = $attempts->findResumableAttempt($user->student, $examination);
+            if ($attempt) {
+                $attemptState = $attempts->attemptState($attempt);
+            }
+        }
+
+        $settings = $examination->settings;
+        $durationMinutes = max(1, (int) ($examination->duration_minutes ?: config('examination.default_duration_minutes', 60)));
+
         return view('pages.examinations.take', [
             'examination' => $examination,
             'questions' => $questions,
-            'remaining' => max(60, ((int) $examination->duration_minutes ?: 60) * 60),
+            'remaining' => $attemptState['remaining_seconds'] ?? ($durationMinutes * 60),
+            'attemptState' => $attemptState,
+            'policyVersion' => config('examination.policy_version', '1.0'),
+            'maxWarnings' => config('examination.max_violation_warnings', 3),
+            'monitoring' => [
+                'requireFullscreen' => (bool) ($settings?->require_fullscreen ?? true),
+                'detectTabSwitch' => (bool) ($settings?->detect_tab_switch ?? true),
+                'disableCopyPaste' => (bool) ($settings?->disable_copy_paste ?? true),
+                'disableRightClick' => (bool) ($settings?->disable_right_click ?? true),
+            ],
         ]);
     }
 
@@ -192,6 +225,7 @@ class PlatformController extends Controller
         }
 
         return [
+            'id' => $question->id,
             'text' => $question->question_text,
             'choices' => $choices,
             'points' => $points ?? $question->points,
@@ -202,6 +236,7 @@ class PlatformController extends Controller
     {
         return [
             [
+                'id' => 1,
                 'text' => 'Which of the following best describes an information system?',
                 'choices' => [
                     ['id' => 'A', 'text' => 'A collection of hardware only'],
@@ -211,6 +246,7 @@ class PlatformController extends Controller
                 ],
             ],
             [
+                'id' => 2,
                 'text' => 'An information system includes people, processes, and technology.',
                 'choices' => [
                     ['id' => 'A', 'text' => 'True'],

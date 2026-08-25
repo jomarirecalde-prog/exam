@@ -38,6 +38,11 @@ class ExaminationAccessService
             && (int) $user->instructor->id === (int) $examination->instructor_id;
     }
 
+    public function canMonitor(User $user, Examination $examination): bool
+    {
+        return $this->canManage($user, $examination);
+    }
+
     public function canTake(User $user, Examination $examination): bool
     {
         if ($user->hasAnyRole(['superadmin', 'admin', 'instructor'])) {
@@ -57,6 +62,15 @@ class ExaminationAccessService
         if ($this->hasInProgressAttempt($student, $examination)) {
             return $this->studentAuthorizedForExamination($student, $examination)
                 || $this->hasAttemptHistory($student, $examination);
+        }
+
+        if ($this->hasLockedAttempt($student, $examination)) {
+            return $this->studentAuthorizedForExamination($student, $examination)
+                || $this->hasAttemptHistory($student, $examination);
+        }
+
+        if ($this->hasResumableNotStartedAttempt($student, $examination)) {
+            return $this->studentAuthorizedForExamination($student, $examination);
         }
 
         if (! $this->studentAssignedToExamination($student, $examination)) {
@@ -396,6 +410,25 @@ class ExaminationAccessService
             ->where('examination_id', $examination->id)
             ->where('student_id', $student->id)
             ->where('status', AttemptStatus::InProgress)
+            ->exists();
+    }
+
+    protected function hasLockedAttempt(Student $student, Examination $examination): bool
+    {
+        return ExaminationAttempt::query()
+            ->where('examination_id', $examination->id)
+            ->where('student_id', $student->id)
+            ->where('status', AttemptStatus::LockedViolationLimit)
+            ->exists();
+    }
+
+    protected function hasResumableNotStartedAttempt(Student $student, Examination $examination): bool
+    {
+        return ExaminationAttempt::query()
+            ->where('examination_id', $examination->id)
+            ->where('student_id', $student->id)
+            ->where('status', AttemptStatus::NotStarted)
+            ->whereNotNull('policy_accepted_at')
             ->exists();
     }
 

@@ -916,30 +916,99 @@ window.examWizard = function examWizard(config = {}) {
 };
 
 window.examTaking = function examTaking(config) {
+    const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    const api = async (url, options = {}) => {
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(options.headers || {}),
+            },
+            ...options,
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const error = new Error(data.message || 'Request failed.');
+            error.response = response;
+            error.data = data;
+            throw error;
+        }
+
+        return data;
+    };
+
+    const initialAttempt = config.attemptState || null;
+    const initialStatus = initialAttempt?.status || null;
+
+    const resolvePhase = () => {
+        if (initialStatus === 'LOCKED_VIOLATION_LIMIT') {
+            return 'locked';
+        }
+        if (initialStatus === 'IN_PROGRESS') {
+            return 'active';
+        }
+        if (initialAttempt?.policy_accepted) {
+            return 'starting';
+        }
+        return 'policy';
+    };
+
     return {
         title: config.title,
         total: config.total,
         remaining: config.remaining,
+        maxWarnings: config.maxWarnings || 3,
+        policyVersion: config.policyVersion,
         current: 1,
+        phase: resolvePhase(),
         navigatorOpen: false,
         submitOpen: false,
         submitting: false,
+        policyAccepted: false,
+        policySubmitting: false,
+        policyError: '',
         answers: {},
         flagged: {},
         questions: config.questions,
         resultUrl: config.resultUrl,
+        urls: config.urls,
+        monitoring: config.monitoring || {},
         timerId: null,
+        saveStatus: '',
+        saveTimer: null,
+        warningCount: initialAttempt?.warning_count || 0,
+        lockReason: initialAttempt?.lock_reason || '',
+        attemptId: initialAttempt?.attempt_id || null,
+        violationModalOpen: false,
+        violationMessage: '',
+        violationModalWarning: 0,
+        violationRemainingText: '',
+        monitoringBound: false,
+        focusLossCooldown: false,
+        lastClientEventId: null,
+        requireFullscreen: config.monitoring?.requireFullscreen !== false,
+
         init() {
-            this.timerId = setInterval(() => {
-                if (this.remaining > 0) {
-                    this.remaining -= 1;
-                }
-                if (this.remaining === 0) {
-                    clearInterval(this.timerId);
-                    this.submitExam(true);
-                }
-            }, 1000);
+            this.hydrateFromAttempt(initialAttempt);
+
+            if (initialAttempt?.reactivated_at) {
+                window.toast?.('Your examination has been reactivated by your instructor. You may continue from your saved progress.', 'success');
+            }
+
+            if (this.phase === 'starting') {
+                this.beginExamination();
+            } else if (this.phase === 'active') {
+                this.startTimer();
+                this.bindMonitoring();
+            }
         },
+
         get timerTone() {
             if (this.remaining <= 60) {
                 return 'critical';
@@ -949,44 +1018,497 @@ window.examTaking = function examTaking(config) {
             }
             return 'normal';
         },
+
         get clock() {
             const minutes = Math.floor(this.remaining / 60);
             const seconds = this.remaining % 60;
             return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         },
+
         get answeredCount() {
             return Object.keys(this.answers).filter((key) => this.answers[key]).length;
         },
+
         get unanswered() {
             return this.questions
                 .map((question, index) => ({ ...question, number: index + 1 }))
                 .filter((question) => !this.answers[question.number]);
         },
+
+        hydrateFromAttempt(attempt) {
+            if (!attempt) {
+                return;
+            }
+
+            this.attemptId = attempt.attempt_id;
+            this.warningCount = attempt.warning_count || 0;
+            this.lockReason = attempt.lock_reason || '';
+            this.remaining = attempt.remaining_seconds ?? this.remaining;
+
+            if (attempt.answers) {
+                this.questions.forEach((question, index) => {
+                    const saved = attempt.answers[question.id];
+                    if (saved) {
+                        const questionNumber = index + 1;
+                        this.answers[questionNumber] = saved.answer;
+                        if (saved.is_flagged) {
+                            this.flagged[questionNumber] = true;
+                        }
+                    }
+                });
+            }
+        },
+
+        async acceptPolicy() {
+            if (!this.policyAccepted || this.policySubmitting) {
+                return;
+            }
+
+            this.policyError = '';
+            this.policySubmitting = true;
+
+            try {
+                if (this.requireFullscreen) {
+                    await this.requestFullscreen();
+                }
+
+                const data = await api(this.urls.acceptPolicy, { method: 'POST', body: '{}' });
+                this.hydrateFromAttempt(data.attempt);
+                this.phase = 'starting';
+                await this.beginExamination();
+            } catch (error) {
+                this.policyError = error.message || 'Unable to accept policy.';
+            } finally {
+                this.policySubmitting = false;
+            }
+        },
+
+        async beginExamination() {
+            try {
+                const data = await api(this.urls.start, { method: 'POST', body: '{}' });
+                this.hydrateFromAttempt(data.attempt);
+                this.phase = 'active';
+                this.startTimer();
+                this.bindMonitoring();
+            } catch (error) {
+                if (error.data?.attempt?.status === 'LOCKED_VIOLATION_LIMIT') {
+                    this.phase = 'locked';
+                    this.hydrateFromAttempt(error.data.attempt);
+                    return;
+                }
+                this.policyError = error.message || 'Unable to start examination.';
+                this.phase = 'policy';
+            }
+        },
+
+        async requestFullscreen() {
+            const element = document.documentElement;
+            if (!element.requestFullscreen) {
+                return;
+            }
+            if (document.fullscreenElement) {
+                return;
+            }
+            await element.requestFullscreen();
+        },
+
+        startTimer() {
+            if (this.timerId) {
+                clearInterval(this.timerId);
+            }
+
+            this.timerId = setInterval(() => {
+                if (this.phase !== 'active') {
+                    return;
+                }
+                if (this.remaining > 0) {
+                    this.remaining -= 1;
+                }
+                if (this.remaining === 0) {
+                    clearInterval(this.timerId);
+                    this.submitExam(true);
+                }
+            }, 1000);
+        },
+
+        bindMonitoring() {
+            if (this.monitoringBound) {
+                return;
+            }
+            this.monitoringBound = true;
+
+            const onFocusLoss = () => {
+                if (this.phase !== 'active' || this.violationModalOpen || this.focusLossCooldown) {
+                    return;
+                }
+                this.focusLossCooldown = true;
+                setTimeout(() => {
+                    this.focusLossCooldown = false;
+                }, 3000);
+                this.reportViolation('TAB_OR_WINDOW_SWITCH');
+            };
+
+            if (this.monitoring.detectTabSwitch !== false) {
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        onFocusLoss();
+                    }
+                });
+                window.addEventListener('blur', onFocusLoss);
+            }
+
+            if (this.monitoring.disableCopyPaste !== false) {
+                document.addEventListener('copy', (event) => {
+                    if (this.phase !== 'active') {
+                        return;
+                    }
+                    event.preventDefault();
+                    this.reportViolation('COPY_ATTEMPT');
+                });
+                document.addEventListener('cut', (event) => {
+                    if (this.phase !== 'active') {
+                        return;
+                    }
+                    event.preventDefault();
+                    this.reportViolation('CUT_ATTEMPT');
+                });
+            }
+
+            if (this.monitoring.disableRightClick !== false) {
+                document.addEventListener('contextmenu', (event) => {
+                    if (this.phase !== 'active') {
+                        return;
+                    }
+                    if (event.target.closest('.exam-protected-content')) {
+                        event.preventDefault();
+                        this.reportViolation('CONTEXT_MENU');
+                    }
+                });
+            }
+
+            if (this.requireFullscreen) {
+                document.addEventListener('fullscreenchange', () => {
+                    if (this.phase !== 'active' || document.fullscreenElement) {
+                        return;
+                    }
+                    this.reportViolation('FULLSCREEN_EXIT');
+                });
+            }
+
+            window.addEventListener('beforeunload', (event) => {
+                if (this.phase !== 'active') {
+                    return;
+                }
+                this.queueViolationBeacon('PAGE_LEAVE');
+                event.preventDefault();
+                event.returnValue = '';
+            });
+
+            window.addEventListener('pagehide', () => {
+                if (this.phase === 'active') {
+                    this.queueViolationBeacon('PAGE_LEAVE');
+                }
+            });
+        },
+
+        queueViolationBeacon(type) {
+            if (!this.urls.violations) {
+                return;
+            }
+            fetch(this.urls.violations, {
+                method: 'POST',
+                credentials: 'same-origin',
+                keepalive: true,
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    violation_type: type,
+                    client_event_id: this.makeEventId(type),
+                    pending_answers: this.buildAnswerPayload(),
+                }),
+            }).catch(() => {});
+        },
+
+        makeEventId(type) {
+            return `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        },
+
+        buildAnswerPayload() {
+            return this.questions
+                .map((question, index) => ({
+                    question_id: question.id,
+                    answer: this.answers[index + 1] ?? null,
+                    is_flagged: !!this.flagged[index + 1],
+                }))
+                .filter((item) => item.question_id);
+        },
+
+        async reportViolation(type) {
+            if (this.phase !== 'active') {
+                return;
+            }
+
+            const clientEventId = this.makeEventId(type);
+
+            try {
+                const data = await api(this.urls.violations, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        violation_type: type,
+                        client_event_id: clientEventId,
+                        pending_answers: this.buildAnswerPayload(),
+                    }),
+                });
+
+                if (data.duplicate) {
+                    return;
+                }
+
+                this.warningCount = data.warning_count;
+                this.saveStatus = 'saved';
+
+                if (data.locked) {
+                    this.phase = 'locked';
+                    this.lockReason = data.attempt?.lock_reason || '';
+                    clearInterval(this.timerId);
+                    return;
+                }
+
+                if (data.recorded) {
+                    this.violationMessage = data.message || 'A policy violation was detected.';
+                    this.violationModalWarning = data.warning_count;
+                    const remaining = this.maxWarnings - data.warning_count;
+                    this.violationRemainingText = remaining > 0
+                        ? `${remaining} more violation${remaining === 1 ? '' : 's'} will result in your examination being automatically locked.`
+                        : 'Your examination will be locked on the next violation.';
+                    this.violationModalOpen = true;
+                }
+            } catch (error) {
+                if (error.response?.status === 423) {
+                    this.phase = 'locked';
+                    this.hydrateFromAttempt(error.data?.attempt);
+                    clearInterval(this.timerId);
+                }
+            }
+        },
+
+        acknowledgeViolation() {
+            this.violationModalOpen = false;
+        },
+
+        scheduleSave() {
+            if (this.phase !== 'active') {
+                return;
+            }
+            this.saveStatus = 'saving';
+            clearTimeout(this.saveTimer);
+            this.saveTimer = setTimeout(() => this.persistAnswers(), 500);
+        },
+
+        async persistAnswers() {
+            if (this.phase !== 'active') {
+                return;
+            }
+
+            try {
+                await api(this.urls.saveAnswers, {
+                    method: 'POST',
+                    body: JSON.stringify({ answers: this.buildAnswerPayload() }),
+                });
+                this.saveStatus = 'saved';
+            } catch {
+                this.saveStatus = '';
+            }
+        },
+
         select(choice) {
             this.answers[this.current] = choice;
+            this.scheduleSave();
         },
+
         flag() {
             this.flagged[this.current] = !this.flagged[this.current];
+            this.scheduleSave();
         },
+
         go(number) {
             this.current = number;
             this.navigatorOpen = false;
         },
+
         prev() {
             this.current = Math.max(1, this.current - 1);
         },
+
         next() {
             this.current = Math.min(this.total, this.current + 1);
         },
-        submitExam(auto = false) {
-            if (this.submitting) {
+
+        async submitExam(auto = false) {
+            if (this.submitting || this.phase !== 'active') {
                 return;
             }
             this.submitting = true;
             this.submitOpen = false;
-            setTimeout(() => {
-                window.location.href = this.resultUrl;
-            }, auto ? 400 : 900);
+
+            try {
+                const data = await api(this.urls.submit, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        auto,
+                        answers: this.buildAnswerPayload(),
+                    }),
+                });
+                window.location.href = data.result_url || this.resultUrl;
+            } catch (error) {
+                this.submitting = false;
+                window.toast?.(error.message || 'Unable to submit examination.', 'error');
+            }
+        },
+    };
+};
+
+window.examMonitoring = function examMonitoring(config) {
+    const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    const api = async (url, options = {}) => {
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(options.headers || {}),
+            },
+            ...options,
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Request failed.');
+        }
+
+        return data;
+    };
+
+    return {
+        examinations: config.examinations || [],
+        selectedExamId: config.examinations?.[0]?.id || null,
+        selectedExam: config.examinations?.[0] || null,
+        attempts: [],
+        loading: false,
+        lastUpdated: '',
+        pollTimer: null,
+        historyOpen: false,
+        historyLoading: false,
+        historyItems: [],
+        historyMeta: '',
+        reactivateOpen: false,
+        reactivateRow: null,
+        reactivationReason: '',
+        warningMode: 'reset',
+        manualWarningCount: 0,
+        reactivateSubmitting: false,
+        reactivateError: '',
+        maxWarnings: config.maxWarnings || 3,
+        violationsUrlTemplate: config.violationsUrl,
+        reactivateUrlTemplate: config.reactivateUrl,
+
+        init() {
+            if (this.selectedExam) {
+                this.refresh();
+                this.pollTimer = setInterval(() => this.refresh(true), 15000);
+            }
+        },
+
+        selectExam(exam) {
+            this.selectedExamId = exam.id;
+            this.selectedExam = exam;
+            this.refresh();
+        },
+
+        async refresh(silent = false) {
+            if (!this.selectedExam?.dataUrl) {
+                return;
+            }
+
+            if (!silent) {
+                this.loading = true;
+            }
+
+            try {
+                const data = await api(this.selectedExam.dataUrl);
+                this.attempts = data.attempts || [];
+                this.lastUpdated = new Date().toLocaleTimeString();
+            } catch (error) {
+                if (!silent) {
+                    window.toast?.(error.message, 'error');
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        attemptUrl(template, attemptId) {
+            return template.replace('__ATTEMPT__', attemptId);
+        },
+
+        async viewViolations(row) {
+            this.historyOpen = true;
+            this.historyLoading = true;
+            this.historyItems = [];
+            this.historyMeta = `${row.student_name || 'Student'} · ${row.warning_count}/${row.max_warnings} warnings`;
+
+            try {
+                const data = await api(this.attemptUrl(this.violationsUrlTemplate, row.attempt_id));
+                this.historyItems = data.violations || [];
+            } catch (error) {
+                window.toast?.(error.message, 'error');
+            } finally {
+                this.historyLoading = false;
+            }
+        },
+
+        openReactivate(row) {
+            this.reactivateRow = row;
+            this.reactivationReason = '';
+            this.warningMode = 'reset';
+            this.manualWarningCount = 0;
+            this.reactivateError = '';
+            this.reactivateOpen = true;
+        },
+
+        async submitReactivate() {
+            if (!this.reactivateRow || this.reactivateSubmitting) {
+                return;
+            }
+
+            this.reactivateError = '';
+            this.reactivateSubmitting = true;
+
+            try {
+                await api(this.attemptUrl(this.reactivateUrlTemplate, this.reactivateRow.attempt_id), {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        reactivation_reason: this.reactivationReason,
+                        warning_mode: this.warningMode,
+                        manual_warning_count: this.warningMode === 'manual' ? this.manualWarningCount : null,
+                    }),
+                });
+                this.reactivateOpen = false;
+                window.toast?.('Examination attempt reactivated.', 'success');
+                await this.refresh();
+            } catch (error) {
+                this.reactivateError = error.message;
+            } finally {
+                this.reactivateSubmitting = false;
+            }
         },
     };
 };
