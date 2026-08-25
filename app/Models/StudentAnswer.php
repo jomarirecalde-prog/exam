@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -45,8 +46,8 @@ class StudentAnswer extends Model
         return $this->belongsTo(Question::class);
     }
 
-    public function essayAnswer(): BelongsTo
+    public function essayAnswer(): HasOne
     {
-        return $this->belongsTo(EssayAnswer::class, 'id', 'student_answer_id');
+        return $this->hasOne(EssayAnswer::class);
     }
 }

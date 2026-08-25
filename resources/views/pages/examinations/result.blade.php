@@ -17,6 +17,10 @@
             </div>
         @endif
 
+        @if (session('status'))
+            <x-ui.alert type="success" class="mt-4">{{ session('status') }}</x-ui.alert>
+        @endif
+
         <p class="ui-kicker">{{ $examination->subject?->code }}</p>
         <h1 class="mt-2 ui-title">{{ $examination->title }}</h1>
 
@@ -40,7 +44,11 @@
                 </x-ui.empty-state>
             </x-ui.card>
         @else
-            @if ($pendingGrading && ! ($viewingAsStaff ?? false))
+            @if ($pendingGrading && ($viewingAsStaff ?? false))
+                <x-ui.alert type="warning" class="mt-8">
+                    This submission has answers waiting for manual grading. Enter points and optional feedback below, then save each answer to update the final score.
+                </x-ui.alert>
+            @elseif ($pendingGrading && ! ($viewingAsStaff ?? false))
                 <x-ui.alert type="warning" class="mt-8">
                     Examination submitted. Some answers require manual grading. Your score below reflects auto-graded questions; essay scores will appear once your instructor finishes grading.
                 </x-ui.alert>
@@ -146,6 +154,61 @@
                                         </div>
                                     @endif
                                 </dl>
+
+                                @if (($viewingAsStaff ?? false) && $item['requires_manual_grading'] && ! empty($item['student_answer_id']))
+                                    <form
+                                        method="POST"
+                                        action="{{ route('examinations.answers.grade', ['examination' => $examination, 'answer' => $item['student_answer_id']]) }}"
+                                        class="mt-6 border-t border-line pt-5"
+                                    >
+                                        @csrf
+                                        <p class="text-sm font-medium text-ink">
+                                            @if ($item['is_graded'])
+                                                Update grade
+                                            @else
+                                                Grade this answer
+                                            @endif
+                                        </p>
+                                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                                            <x-ui.field
+                                                label="Points earned"
+                                                :help="'Out of '.$formatPoints((float) $item['points']).' pts'"
+                                            >
+                                                <input
+                                                    type="number"
+                                                    name="points_earned"
+                                                    class="ui-input"
+                                                    min="0"
+                                                    max="{{ $item['points'] }}"
+                                                    step="0.01"
+                                                    value="{{ old('points_earned', $item['is_graded'] ? $item['points_earned'] : '') }}"
+                                                    required
+                                                />
+                                                @error('points_earned')
+                                                    <p class="mt-1 text-sm text-danger">{{ $message }}</p>
+                                                @enderror
+                                            </x-ui.field>
+                                            <x-ui.field label="Instructor feedback" class="sm:col-span-2">
+                                                <textarea
+                                                    name="feedback"
+                                                    class="ui-input min-h-24"
+                                                    placeholder="Optional feedback for the student..."
+                                                >{{ old('feedback', $item['feedback'] ?? '') }}</textarea>
+                                                @error('feedback')
+                                                    <p class="mt-1 text-sm text-danger">{{ $message }}</p>
+                                                @enderror
+                                            </x-ui.field>
+                                        </div>
+                                        @error('answer')
+                                            <p class="mt-2 text-sm text-danger">{{ $message }}</p>
+                                        @enderror
+                                        <div class="mt-4">
+                                            <button type="submit" class="btn-primary btn-sm">
+                                                {{ $item['is_graded'] ? 'Update Grade' : 'Save Grade' }}
+                                            </button>
+                                        </div>
+                                    </form>
+                                @endif
                             </x-ui.card>
                         @endforeach
                     </div>

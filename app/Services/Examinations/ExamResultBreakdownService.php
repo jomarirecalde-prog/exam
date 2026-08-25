@@ -187,6 +187,7 @@ class ExamResultBreakdownService
 
         $item = [
             'number' => $number,
+            'student_answer_id' => $answer?->id,
             'question_id' => $question->id,
             'type' => $type?->value ?? (string) $question->type,
             'type_label' => Str::headline(str_replace('_', ' ', $type?->value ?? (string) $question->type)),

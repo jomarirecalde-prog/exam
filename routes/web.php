@@ -108,6 +108,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
     Route::get('/examinations/{examination}/take', [PlatformController::class, 'take'])->name('examinations.take');
     Route::get('/examinations/{examination}/result', [PlatformController::class, 'result'])->name('examinations.result');
+    Route::middleware('role:superadmin,admin,instructor')->group(function () {
+        Route::post('/examinations/{examination}/answers/{answer}/grade', [\App\Http\Controllers\ExaminationGradingController::class, 'store'])
+            ->name('examinations.answers.grade');
+    });
 
     Route::prefix('examinations/{examination}/attempts')->name('examinations.attempts.')->group(function () {
         Route::get('/state', [\App\Http\Controllers\ExaminationAttemptController::class, 'state'])->name('state');
