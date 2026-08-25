@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AttemptStatus;
 use App\Enums\ExamStatus;
 use App\Enums\QuestionType;
 use App\Models\Examination;
@@ -102,17 +103,43 @@ class PlatformController extends Controller
             $query->whereRaw('1 = 0');
         }
 
-        $active = $query->latest()->get()->map(fn (Examination $exam) => [
-            'id' => $exam->id,
-            'title' => $exam->title,
-            'subject' => $exam->subject?->name ?? $exam->subject?->code,
-            'subject_code' => $exam->subject?->code,
-            'sections' => $exam->sections->pluck('name')->filter()->join(', ') ?: ($exam->subjectOffering?->section?->name ?? 'Unassigned'),
-            'is_live' => in_array($exam->status, [ExamStatus::Active, ExamStatus::Published], true),
-            'dataUrl' => route('monitoring.data', $exam),
-        ]);
+        $active = $query->latest()->get()->map(function (Examination $exam) use ($access) {
+            $studentsTotal = $access->eligibleStudents($exam)->count();
+            $studentsTaking = ExaminationAttempt::query()
+                ->where('examination_id', $exam->id)
+                ->whereIn('status', [
+                    AttemptStatus::InProgress,
+                    AttemptStatus::SyncPending,
+                ])
+                ->count();
+
+            return [
+                'id' => $exam->id,
+                'title' => $exam->title,
+                'subject' => $exam->subject?->name ?? $exam->subject?->code,
+                'subject_code' => $exam->subject?->code,
+                'sections' => $exam->sections->pluck('name')->filter()->join(', ') ?: ($exam->subjectOffering?->section?->name ?? 'Unassigned'),
+                'is_live' => in_array($exam->status, [ExamStatus::Active, ExamStatus::Published], true),
+                'students_total' => $studentsTotal,
+                'students_taking' => $studentsTaking,
+                'monitor_url' => route('monitoring.show', $exam),
+            ];
+        });
 
         return view('pages.monitoring.index', compact('active'));
+    }
+
+    public function monitoringShow(Examination $examination, ExaminationAccessService $access): View
+    {
+        $user = auth()->user();
+
+        if (! $access->canMonitor($user, $examination)) {
+            abort(403, 'You are not authorized to monitor this examination.');
+        }
+
+        $examination->loadMissing(['subject', 'sections', 'subjectOffering.section']);
+
+        return view('pages.monitoring.show', compact('examination'));
     }
 
     public function sync(): View

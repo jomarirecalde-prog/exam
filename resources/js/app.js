@@ -2380,14 +2380,13 @@ window.examMonitoring = function examMonitoring(config) {
     };
 
     return {
-        examinations: config.examinations || [],
-        selectedExamId: null,
-        selectedExam: null,
+        selectedExam: config.exam || null,
+        selectedExamId: config.exam?.id || null,
+        backUrl: config.backUrl || null,
         examination: null,
         summary: {},
         students: [],
         activities: [],
-        examSummaries: {},
         loading: false,
         polling: false,
         lastUpdated: '',
@@ -2421,26 +2420,12 @@ window.examMonitoring = function examMonitoring(config) {
         knownStates: {},
 
         init() {
-            this.prefetchExamSummaries();
-        },
+            if (!this.selectedExam?.dataUrl) {
+                return;
+            }
 
-        async prefetchExamSummaries() {
-            await Promise.all(
-                (this.examinations || []).map(async (exam) => {
-                    if (!exam.dataUrl || this.examSummaries[exam.id]) {
-                        return;
-                    }
-
-                    try {
-                        const data = await api(exam.dataUrl);
-                        if (data.summary) {
-                            this.examSummaries[exam.id] = data.summary;
-                        }
-                    } catch {
-                        /* overview counts are best-effort */
-                    }
-                }),
-            );
+            this.refresh(false, true);
+            this.startPolling();
         },
 
         startPolling() {
@@ -2456,18 +2441,6 @@ window.examMonitoring = function examMonitoring(config) {
                 clearInterval(this.pollTimer);
                 this.pollTimer = null;
             }
-        },
-
-        examCardStats(examId) {
-            const cached = this.examSummaries[examId];
-            if (!cached) {
-                return { taking: '—', total: '—' };
-            }
-
-            return {
-                taking: (cached.taking_exam || 0) + (cached.offline || 0),
-                total: cached.total || 0,
-            };
         },
 
         get filteredStudents() {
@@ -2513,27 +2486,6 @@ window.examMonitoring = function examMonitoring(config) {
             return this.showAllActivity ? items : items.slice(0, 12);
         },
 
-        selectExam(exam) {
-            if (this.selectedExamId === exam.id) {
-                return;
-            }
-
-            this.stopPolling();
-            this.selectedExamId = exam.id;
-            this.selectedExam = exam;
-            this.lastSyncAt = null;
-            this.students = [];
-            this.activities = [];
-            this.summary = {};
-            this.examination = null;
-            this.knownStates = {};
-            this.searchQuery = '';
-            this.statusFilter = 'all';
-            this.sortBy = 'priority';
-            this.refresh(false, true);
-            this.startPolling();
-        },
-
         async refresh(silent = false, full = false) {
             if (!this.selectedExam?.dataUrl) {
                 return;
@@ -2554,10 +2506,6 @@ window.examMonitoring = function examMonitoring(config) {
                 this.examination = data.examination || null;
                 this.summary = data.summary || {};
                 this.activities = data.activities || [];
-
-                if (this.selectedExamId && this.summary) {
-                    this.examSummaries[this.selectedExamId] = this.summary;
-                }
 
                 if (full || !this.lastSyncAt || !data.students?.length) {
                     this.students = data.students || [];

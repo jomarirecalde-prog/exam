@@ -138,6 +138,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::middleware('role:superadmin,admin,instructor')->prefix('monitoring')->name('monitoring.')->group(function () {
+        Route::get('/examinations/{examination}', [PlatformController::class, 'monitoringShow'])->name('show');
         Route::get('/examinations/{examination}/data', [\App\Http\Controllers\ExaminationMonitoringController::class, 'data'])->name('data');
         Route::get('/attempts/{attempt}', [\App\Http\Controllers\ExaminationMonitoringController::class, 'showAttempt'])->name('attempts.show');
         Route::get('/attempts/{attempt}/violations', [\App\Http\Controllers\ExaminationMonitoringController::class, 'violations'])->name('violations');

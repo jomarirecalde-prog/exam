@@ -52,7 +52,30 @@ class ExaminationMonitoringTest extends TestCase
             ->assertSee('Examination Monitoring')
             ->assertSee('Policy Monitoring Exam')
             ->assertSee('My Active Examinations')
-            ->assertSee('Select an examination to monitor');
+            ->assertSee('Monitor Examination')
+            ->assertDontSee('Select an examination to monitor');
+    }
+
+    public function test_instructor_can_enter_examination_monitoring_page(): void
+    {
+        $data = $this->monitoringScenario();
+
+        $this->actingAs($data['instructorUser'])
+            ->get(route('monitoring.show', $data['examination']))
+            ->assertOk()
+            ->assertSee('Policy Monitoring Exam')
+            ->assertSee('Back to Examinations')
+            ->assertSee('Live Activity');
+    }
+
+    public function test_unauthorized_instructor_cannot_enter_examination_monitoring_page(): void
+    {
+        $data = $this->monitoringScenario();
+        $otherInstructor = $this->instructor($data['structure']['department']);
+
+        $this->actingAs($otherInstructor->user)
+            ->get(route('monitoring.show', $data['examination']))
+            ->assertForbidden();
     }
 
     public function test_student_cannot_access_monitoring_page(): void

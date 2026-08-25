@@ -83,6 +83,7 @@ class Navigation
             'results.index' => [['Results'], ['Examination Results']],
             'reports.index' => [['Results'], ['Reports']],
             'monitoring.index' => [['Monitoring']],
+            'monitoring.show' => [['Monitoring', 'monitoring.index'], ['Monitor Examination']],
             'sync.index' => [['Synchronization']],
             'offline.sync' => [['Sync Status']],
             'audit.index' => [['Audit Logs']],
