@@ -46,6 +46,12 @@ class StoreExaminationRequest extends FormRequest
             'randomize_questions' => ['sometimes', 'boolean'],
             'allow_back_navigation' => ['sometimes', 'boolean'],
             'auto_submit_on_expire' => ['sometimes', 'boolean'],
+            'offline_examination_mode' => ['sometimes', 'string', 'in:disabled,allowed,required_preparation'],
+            'allow_offline_continuation' => ['sometimes', 'boolean'],
+            'require_offline_preparation' => ['sometimes', 'boolean'],
+            'allow_pending_offline_submission' => ['sometimes', 'boolean'],
+            'max_offline_duration_minutes' => ['nullable', 'integer', 'min:5', 'max:480'],
+            'sync_grace_period_minutes' => ['nullable', 'integer', 'min:5', 'max:120'],
             'status' => ['sometimes', Rule::in([ExamStatus::Draft->value, ExamStatus::Published->value])],
             'questions' => ['sometimes', 'array'],
             'questions.*.type' => ['required_with:questions', 'string', Rule::in(['multiple_choice', 'true_false', 'identification', 'essay'])],
@@ -117,6 +123,9 @@ class StoreExaminationRequest extends FormRequest
             'randomize_questions' => $this->boolean('randomize_questions'),
             'allow_back_navigation' => $this->boolean('allow_back_navigation'),
             'auto_submit_on_expire' => $this->boolean('auto_submit_on_expire'),
+            'allow_offline_continuation' => $this->boolean('allow_offline_continuation'),
+            'require_offline_preparation' => $this->boolean('require_offline_preparation'),
+            'allow_pending_offline_submission' => $this->boolean('allow_pending_offline_submission'),
             'status' => strtoupper((string) $this->input('status', ExamStatus::Draft->value)),
         ]);
     }

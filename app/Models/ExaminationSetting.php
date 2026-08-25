@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OfflineExaminationMode;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
 
@@ -15,6 +16,8 @@ class ExaminationSetting extends Model
         'prevent_duplicate_submissions', 'require_fullscreen', 'detect_inactivity',
         'inactivity_timeout_seconds', 'enable_review_before_submit',
         'disable_copy_paste', 'disable_right_click', 'detect_tab_switch', 'question_pool_size',
+        'offline_examination_mode', 'allow_offline_continuation', 'require_offline_preparation',
+        'allow_pending_offline_submission', 'max_offline_duration_minutes', 'sync_grace_period_minutes',
     ];
 
     protected function casts(): array
@@ -38,7 +41,18 @@ class ExaminationSetting extends Model
             'disable_copy_paste' => 'boolean',
             'disable_right_click' => 'boolean',
             'detect_tab_switch' => 'boolean',
+            'offline_examination_mode' => OfflineExaminationMode::class,
+            'allow_offline_continuation' => 'boolean',
+            'require_offline_preparation' => 'boolean',
+            'allow_pending_offline_submission' => 'boolean',
         ];
+    }
+
+    public function supportsOffline(): bool
+    {
+        $mode = $this->offline_examination_mode ?? OfflineExaminationMode::Disabled;
+
+        return $mode->supportsOffline() && $this->allow_offline_continuation;
     }
 
     public function examination(): BelongsTo

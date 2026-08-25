@@ -19,4 +19,11 @@ return [
         'address' => env('INSTITUTION_ADDRESS', ''),
         'contact' => env('INSTITUTION_CONTACT', ''),
     ],
+    'pwa' => [
+        'name' => env('PWA_NAME', 'Online Examination System'),
+        'short_name' => env('PWA_SHORT_NAME', 'Exam System'),
+        'theme_color' => env('PWA_THEME_COLOR', '#142536'),
+        'background_color' => env('PWA_BACKGROUND_COLOR', '#F6F7F9'),
+    ],
+    'offline_session_hours' => (int) env('OFFLINE_SESSION_HOURS', 168),
 ];

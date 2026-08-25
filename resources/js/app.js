@@ -1,4 +1,18 @@
 import './bootstrap';
+import { registerServiceWorker } from './pwa/register-sw';
+import './pwa/install';
+import examOfflineDb from './offline/db';
+import { prepareExaminationOffline, loadPreparedExam, isAuthorizationValid } from './offline/exam-preparation';
+import { enqueueSyncEvent, getQueueSummary } from './offline/sync-queue';
+import { syncAttempt, installSyncListeners, isOnline, verifyServerReachable } from './offline/sync-engine';
+import { createTimerState, persistTimer, loadTimer, tickTimer } from './offline/timer';
+import { getDeviceIdentifier, getDeviceName } from './offline/device';
+import { bootstrapOfflineAccess, isOfflineSessionValid } from './offline/session';
+import { listCatalogEntries, EXAM_STATUS } from './offline/catalog';
+import { verifyPin, isPinConfigured, isUnlocked } from './offline/app-lock';
+import { persistExamProgress, getAttemptState } from './offline/attempt-state';
+
+registerServiceWorker();
 
 const THEME_KEY = 'exam-theme';
 const SIDEBAR_KEY = 'exam-sidebar-collapsed';
@@ -47,6 +61,31 @@ window.examShell = function examShell() {
             window.addEventListener('app-toast', (event) => {
                 this.pushToast(event.detail.message, event.detail.type || 'success');
             });
+            this.bootstrapOfflineIfStudent();
+        },
+        async bootstrapOfflineIfStudent() {
+            const meta = document.querySelector('meta[name="exam-student-id"]');
+            const bootstrapUrl = document.querySelector('meta[name="offline-bootstrap-url"]')?.content;
+            if (!meta?.content || !bootstrapUrl || !navigator.onLine) {
+                return;
+            }
+            try {
+                await bootstrapOfflineAccess(bootstrapUrl, getDeviceIdentifier(), getDeviceName());
+                this.cacheBuildAssetsForOffline();
+            } catch {
+                /* offline bootstrap is best-effort */
+            }
+        },
+        cacheBuildAssetsForOffline() {
+            const urls = [
+                ...document.querySelectorAll('script[src*="/build/"], link[href*="/build/"]'),
+            ].map((el) => el.src || el.href).filter(Boolean);
+            if (urls.length && navigator.serviceWorker?.controller) {
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'CACHE_BUILD_ASSETS',
+                    urls,
+                });
+            }
         },
         toggleCollapsed() {
             this.collapsed = !this.collapsed;
@@ -468,6 +507,12 @@ window.examWizard = function examWizard(config = {}) {
             randomize: incomingForm.randomize ?? true,
             backNav: incomingForm.backNav ?? true,
             autoSubmit: incomingForm.autoSubmit ?? true,
+            offlineMode: incomingForm.offlineMode || 'disabled',
+            allowOfflineContinuation: incomingForm.allowOfflineContinuation ?? false,
+            requireOfflinePreparation: incomingForm.requireOfflinePreparation ?? false,
+            allowPendingOfflineSubmission: incomingForm.allowPendingOfflineSubmission ?? true,
+            maxOfflineDuration: incomingForm.maxOfflineDuration ?? 30,
+            syncGracePeriod: incomingForm.syncGracePeriod ?? 15,
         },
         init() {
             if (this.filtersReady()) {
@@ -732,6 +777,12 @@ window.examWizard = function examWizard(config = {}) {
                 randomize_questions: Boolean(this.form.randomize),
                 allow_back_navigation: Boolean(this.form.backNav),
                 auto_submit_on_expire: Boolean(this.form.autoSubmit),
+                offline_examination_mode: this.form.offlineMode,
+                allow_offline_continuation: Boolean(this.form.allowOfflineContinuation),
+                require_offline_preparation: Boolean(this.form.requireOfflinePreparation),
+                allow_pending_offline_submission: Boolean(this.form.allowPendingOfflineSubmission),
+                max_offline_duration_minutes: this.form.offlineMode === 'disabled' ? null : Number(this.form.maxOfflineDuration) || null,
+                sync_grace_period_minutes: Number(this.form.syncGracePeriod) || 15,
                 status,
                 questions: this.questions.map(({ id, ...question }) => question),
             };
@@ -916,6 +967,7 @@ window.examWizard = function examWizard(config = {}) {
 };
 
 window.examTaking = function examTaking(config) {
+    const offlineOnly = Boolean(config.offlineOnly);
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     const api = async (url, options = {}) => {
@@ -947,6 +999,9 @@ window.examTaking = function examTaking(config) {
     const initialStatus = initialAttempt?.status || null;
 
     const resolvePhase = () => {
+        if (offlineOnly) {
+            return 'loading';
+        }
         if (initialStatus === 'LOCKED_VIOLATION_LIMIT') {
             return 'locked';
         }
@@ -954,6 +1009,22 @@ window.examTaking = function examTaking(config) {
             return 'active';
         }
         if (initialAttempt?.policy_accepted) {
+            return 'starting';
+        }
+        return 'policy';
+    };
+
+    const resolveOfflinePhase = (pkg, localState, answers) => {
+        if (localState?.phase === 'locked' || localState?.status === 'LOCKED_VIOLATION_LIMIT') {
+            return 'locked';
+        }
+        if (localState?.phase === 'pending_submission' || pkg?.attempt_state?.pending_submission_at) {
+            return 'pending_submission';
+        }
+        if (localState?.phase === 'active' || pkg?.attempt_state?.status === 'IN_PROGRESS') {
+            return 'resume';
+        }
+        if (localState?.policy_accepted || pkg?.attempt_state?.policy_accepted) {
             return 'starting';
         }
         return 'policy';
@@ -993,9 +1064,38 @@ window.examTaking = function examTaking(config) {
         focusLossCooldown: false,
         lastClientEventId: null,
         requireFullscreen: config.monitoring?.requireFullscreen !== false,
+        offline: config.offline || { supported: false },
+        examinationId: config.examinationId,
+        studentId: config.studentId || null,
+        networkOnline: navigator.onLine,
+        offlinePrepared: false,
+        preparingOffline: false,
+        prepProgress: null,
+        prepError: '',
+        prepStepsComplete: false,
+        pendingSubmission: false,
+        syncConflict: false,
+        syncConflictMessage: '',
+        lastSyncAt: null,
+        pendingSyncCount: 0,
+        timingToken: initialAttempt?.offline_timing_token || null,
+        timerState: null,
+        syncUrl: config.urls?.sync || null,
+        submitOfflineUrl: config.urls?.submitOffline || null,
+        offlineOnly,
+        subjectCode: config.subjectCode || '',
+        lastSavedAt: '',
+        bootstrapError: '',
 
         init() {
+            if (this.offlineOnly) {
+                this.bootstrapFromLocalPackage();
+                return;
+            }
+
             this.hydrateFromAttempt(initialAttempt);
+            this.bindNetworkListeners();
+            this.restoreLocalState();
 
             if (initialAttempt?.reactivated_at) {
                 window.toast?.('Your examination has been reactivated by your instructor. You may continue from your saved progress.', 'success');
@@ -1004,9 +1104,284 @@ window.examTaking = function examTaking(config) {
             if (this.phase === 'starting') {
                 this.beginExamination();
             } else if (this.phase === 'active') {
-                this.startTimer();
-                this.bindMonitoring();
+                this.onExamActive();
             }
+
+            installSyncListeners(() => this.syncWhenOnline());
+            navigator.serviceWorker?.addEventListener('message', (event) => {
+                if (event.data?.type === 'TRIGGER_SYNC') {
+                    this.syncWhenOnline();
+                }
+            });
+        },
+
+        bindNetworkListeners() {
+            const update = () => {
+                this.networkOnline = navigator.onLine;
+                if (this.networkOnline) {
+                    this.syncWhenOnline();
+                }
+            };
+            window.addEventListener('online', update);
+            window.addEventListener('offline', update);
+        },
+
+        async bootstrapFromLocalPackage() {
+            this.bindNetworkListeners();
+            installSyncListeners(() => this.syncWhenOnline());
+
+            try {
+                const pkg = await loadPreparedExam(this.examinationId, this.studentId);
+                if (!pkg || !isAuthorizationValid(pkg)) {
+                    this.bootstrapError = 'This examination is not prepared for offline use or authorization has expired.';
+                    this.phase = 'policy';
+                    return;
+                }
+
+                this.offlinePrepared = true;
+                this.title = pkg.title || this.title;
+                this.subjectCode = pkg.subject_code || '';
+                this.total = pkg.questions?.length || 0;
+                this.questions = pkg.questions || [];
+                this.remaining = pkg.duration_seconds || (pkg.duration_minutes * 60) || this.remaining;
+                this.maxWarnings = pkg.max_warnings || this.maxWarnings;
+                this.monitoring = pkg.monitoring || {};
+                this.requireFullscreen = this.monitoring.requireFullscreen !== false;
+                this.offline = pkg.offline || { supported: true };
+                this.timingToken = pkg.attempt_state?.offline_timing_token || pkg.offline_timing_token || null;
+
+                if (pkg.attempt_state) {
+                    this.hydrateFromAttempt(pkg.attempt_state);
+                }
+
+                const localState = pkg.attempt_id ? await getAttemptState(pkg.attempt_id) : null;
+                if (localState?.current) {
+                    this.current = localState.current;
+                }
+                if (localState?.warning_count != null) {
+                    this.warningCount = localState.warning_count;
+                }
+                if (localState?.remaining_seconds != null) {
+                    this.remaining = localState.remaining_seconds;
+                }
+                if (localState?.policy_accepted) {
+                    this.policyAccepted = true;
+                }
+
+                if (this.attemptId) {
+                    const storedAnswers = await examOfflineDb.getAnswersForAttempt(this.attemptId);
+                    storedAnswers.forEach((row) => {
+                        const index = this.questions.findIndex((q) => q.id === row.question_id);
+                        if (index >= 0) {
+                            const number = index + 1;
+                            this.answers[number] = row.answer;
+                            if (row.is_flagged) {
+                                this.flagged[number] = true;
+                            }
+                        }
+                    });
+
+                    const timer = await loadTimer(this.attemptId);
+                    if (timer) {
+                        this.timerState = timer;
+                        this.remaining = tickTimer(timer);
+                    }
+
+                    const summary = await getQueueSummary();
+                    this.pendingSyncCount = summary.pendingCount;
+                    this.lastSyncAt = summary.lastSyncedAt;
+                }
+
+                this.phase = resolveOfflinePhase(pkg, localState, this.answers);
+                this.lastSavedAt = localState?.last_saved_at
+                    ? new Date(localState.last_saved_at).toLocaleTimeString()
+                    : '';
+
+                if (this.phase === 'starting') {
+                    await this.beginExamination();
+                }
+            } catch (error) {
+                this.bootstrapError = error.message || 'Unable to load offline examination.';
+                this.phase = 'policy';
+            }
+        },
+
+        async persistLocalAttemptState(extra = {}) {
+            if (!this.attemptId) {
+                return;
+            }
+            await persistExamProgress(this.attemptId, {
+                examination_id: this.examinationId,
+                student_id: this.studentId,
+                phase: this.phase,
+                status: this.phase === 'locked' ? 'LOCKED_VIOLATION_LIMIT' : (this.phase === 'active' ? 'IN_PROGRESS' : null),
+                current: this.current,
+                warning_count: this.warningCount,
+                policy_accepted: this.policyAccepted || extra.policy_accepted,
+                remaining_seconds: this.remaining,
+                pending_submission: this.pendingSubmission,
+                lock_reason: this.lockReason,
+                last_saved_at: new Date().toISOString(),
+                ...extra,
+            });
+            this.lastSavedAt = new Date().toLocaleTimeString();
+        },
+
+        async resumeExamination() {
+            this.phase = 'active';
+            await this.persistLocalAttemptState({ phase: 'active' });
+            await this.onExamActive();
+        },
+
+        async restoreLocalState() {
+            if (!this.examinationId || !this.studentId) {
+                return;
+            }
+            try {
+                const pkg = await loadPreparedExam(this.examinationId, this.studentId);
+                if (pkg) {
+                    this.offlinePrepared = true;
+                    if (pkg.attempt_state?.pending_submission_at) {
+                        this.pendingSubmission = true;
+                        this.phase = 'pending_submission';
+                    }
+                }
+                if (this.attemptId) {
+                    const localState = await getAttemptState(this.attemptId);
+                    if (localState?.phase === 'locked' || localState?.status === 'LOCKED_VIOLATION_LIMIT') {
+                        this.phase = 'locked';
+                        this.warningCount = localState.warning_count ?? this.warningCount;
+                        this.lockReason = localState.lock_reason || this.lockReason;
+                    } else if (localState?.phase === 'pending_submission') {
+                        this.phase = 'pending_submission';
+                        this.pendingSubmission = true;
+                    } else if (localState?.phase === 'active' && this.phase !== 'active') {
+                        this.phase = 'resume';
+                        this.current = localState.current || this.current;
+                        this.lastSavedAt = localState.last_saved_at
+                            ? new Date(localState.last_saved_at).toLocaleTimeString()
+                            : '';
+                    }
+
+                    const timer = await loadTimer(this.attemptId);
+                    if (timer && (this.phase === 'active' || this.phase === 'resume')) {
+                        this.timerState = timer;
+                        this.remaining = tickTimer(timer);
+                    }
+                    const summary = await getQueueSummary();
+                    this.pendingSyncCount = summary.pendingCount;
+                    this.lastSyncAt = summary.lastSyncedAt;
+                }
+            } catch {
+                /* ignore restore errors */
+            }
+        },
+
+        async onExamActive() {
+            localStorage.setItem('exam-active-session', '1');
+            this.startTimer();
+            this.bindMonitoring();
+            if (this.attemptId && this.timingToken) {
+                this.timerState = createTimerState({
+                    attemptId: this.attemptId,
+                    remainingSeconds: this.remaining,
+                    timingToken: this.timingToken,
+                });
+                await persistTimer(this.timerState);
+            }
+        },
+
+        get connectionLabel() {
+            return this.networkOnline ? 'Online' : 'Offline Mode';
+        },
+
+        get connectionDetail() {
+            if (this.networkOnline) {
+                return this.pendingSyncCount > 0
+                    ? 'Synchronizing pending changes...'
+                    : 'Answers are being synchronized';
+            }
+            return 'Your answers are safely saved on this device and will synchronize when the connection returns.';
+        },
+
+        get saveStatusLabel() {
+            if (this.saveStatus === 'saving') {
+                return 'Saving...';
+            }
+            if (this.saveStatus === 'saved' && this.networkOnline && this.pendingSyncCount === 0) {
+                return 'Saved and synchronized';
+            }
+            if (this.saveStatus === 'saved' || this.saveStatus === 'local') {
+                return this.networkOnline ? 'Saved on this device' : 'Saved on this device';
+            }
+            if (this.pendingSyncCount > 0) {
+                return 'Waiting to sync';
+            }
+            return '';
+        },
+
+        async prepareOfflineMode() {
+            if (!this.offline.supported || this.preparingOffline) {
+                return;
+            }
+            this.prepError = '';
+            this.preparingOffline = true;
+            this.phase = 'preparing';
+
+            try {
+                await prepareExaminationOffline({
+                    prepareUrl: this.urls.prepareOffline,
+                    examinationId: this.examinationId,
+                    studentId: this.studentId,
+                    onProgress: (progress) => {
+                        this.prepProgress = progress;
+                    },
+                });
+                this.offlinePrepared = true;
+                this.prepStepsComplete = true;
+            } catch (error) {
+                this.prepError = error.message || 'Preparation failed.';
+                this.phase = 'policy';
+            } finally {
+                this.preparingOffline = false;
+            }
+        },
+
+        async syncWhenOnline() {
+            if (!this.networkOnline || !this.attemptId || !this.syncUrl) {
+                return;
+            }
+            const reachable = await verifyServerReachable();
+            if (!reachable) {
+                return;
+            }
+            try {
+                const result = await syncAttempt(this.attemptId, this.syncUrl);
+                if (result.conflicts?.length) {
+                    this.syncConflict = true;
+                    this.syncConflictMessage = 'Your examination data needs instructor or system review.';
+                    return;
+                }
+                if (result.attempt) {
+                    this.hydrateFromAttempt(result.attempt);
+                    if (result.attempt.status === 'LOCKED_VIOLATION_LIMIT') {
+                        this.phase = 'locked';
+                        clearInterval(this.timerId);
+                    }
+                }
+                const summary = await getQueueSummary();
+                this.pendingSyncCount = summary.pendingCount;
+                this.lastSyncAt = summary.lastSyncedAt;
+                if (this.pendingSyncCount === 0 && this.networkOnline) {
+                    this.saveStatus = 'saved';
+                }
+            } catch {
+                /* sync will retry later */
+            }
+        },
+
+        uuid() {
+            return crypto.randomUUID();
         },
 
         get timerTone() {
@@ -1044,6 +1419,14 @@ window.examTaking = function examTaking(config) {
             this.warningCount = attempt.warning_count || 0;
             this.lockReason = attempt.lock_reason || '';
             this.remaining = attempt.remaining_seconds ?? this.remaining;
+            this.timingToken = attempt.offline_timing_token || this.timingToken;
+            if (attempt.pending_submission_at) {
+                this.pendingSubmission = true;
+            }
+            if (this.attemptId && this.urls.syncTemplate) {
+                this.syncUrl = this.urls.syncTemplate.replace('__ATTEMPT__', this.attemptId);
+                this.submitOfflineUrl = this.urls.submitOfflineTemplate?.replace('__ATTEMPT__', this.attemptId);
+            }
 
             if (attempt.answers) {
                 this.questions.forEach((question, index) => {
@@ -1068,12 +1451,43 @@ window.examTaking = function examTaking(config) {
             this.policySubmitting = true;
 
             try {
-                if (this.requireFullscreen) {
+                if (this.requireFullscreen && this.networkOnline) {
                     await this.requestFullscreen();
+                }
+
+                if (!this.networkOnline || this.offlineOnly) {
+                    if (!this.offlinePrepared) {
+                        this.policyError = 'This examination is not prepared for offline use.';
+                        return;
+                    }
+
+                    await enqueueSyncEvent({
+                        attemptId: this.attemptId,
+                        eventType: 'policy_acceptance',
+                        payload: {
+                            policy_version: this.policyVersion,
+                            accepted_at: new Date().toISOString(),
+                        },
+                    });
+                    this.pendingSyncCount += 1;
+                    this.policyAccepted = true;
+                    await this.persistLocalAttemptState({ policy_accepted: true });
+                    this.phase = 'starting';
+                    await this.beginExamination();
+                    return;
                 }
 
                 const data = await api(this.urls.acceptPolicy, { method: 'POST', body: '{}' });
                 this.hydrateFromAttempt(data.attempt);
+
+                if (this.offline.supported && (this.offline.require_preparation || this.offline.mode === 'required_preparation')) {
+                    this.phase = 'preparing';
+                    await this.prepareOfflineMode();
+                    if (!this.offlinePrepared) {
+                        return;
+                    }
+                }
+
                 this.phase = 'starting';
                 await this.beginExamination();
             } catch (error) {
@@ -1084,21 +1498,76 @@ window.examTaking = function examTaking(config) {
         },
 
         async beginExamination() {
+            if (this.offline.supported && this.offline.require_preparation && !this.offlinePrepared) {
+                if (this.networkOnline && !this.offlineOnly) {
+                    await this.prepareOfflineMode();
+                    if (!this.offlinePrepared) {
+                        return;
+                    }
+                } else {
+                    this.policyError = 'This examination is not prepared for offline use.';
+                    this.phase = 'policy';
+                    return;
+                }
+            }
+
+            const startOffline = () => this.beginExaminationOffline();
+
+            if (!this.networkOnline || this.offlineOnly) {
+                await startOffline();
+                return;
+            }
+
             try {
                 const data = await api(this.urls.start, { method: 'POST', body: '{}' });
                 this.hydrateFromAttempt(data.attempt);
                 this.phase = 'active';
-                this.startTimer();
-                this.bindMonitoring();
+                await this.onExamActive();
             } catch (error) {
+                if (!this.networkOnline && this.offlinePrepared) {
+                    await startOffline();
+                    return;
+                }
                 if (error.data?.attempt?.status === 'LOCKED_VIOLATION_LIMIT') {
                     this.phase = 'locked';
                     this.hydrateFromAttempt(error.data.attempt);
+                    await this.persistLocalAttemptState({ phase: 'locked', status: 'LOCKED_VIOLATION_LIMIT' });
                     return;
                 }
                 this.policyError = error.message || 'Unable to start examination.';
                 this.phase = 'policy';
             }
+        },
+
+        async beginExaminationOffline() {
+            const pkg = await loadPreparedExam(this.examinationId, this.studentId);
+            if (!pkg?.attempt_state?.attempt_id) {
+                this.policyError = 'Offline authorization is missing. Prepare this examination while online.';
+                this.phase = 'policy';
+                return;
+            }
+
+            this.hydrateFromAttempt(pkg.attempt_state);
+
+            if (pkg.attempt_state.status === 'LOCKED_VIOLATION_LIMIT') {
+                this.phase = 'locked';
+                await this.persistLocalAttemptState({ phase: 'locked', status: 'LOCKED_VIOLATION_LIMIT' });
+                return;
+            }
+
+            await enqueueSyncEvent({
+                attemptId: this.attemptId,
+                eventType: 'examination_started',
+                payload: {
+                    started_at: new Date().toISOString(),
+                    timing_token: this.timingToken,
+                },
+            });
+            this.pendingSyncCount += 1;
+
+            this.phase = 'active';
+            await this.persistLocalAttemptState({ phase: 'active', status: 'IN_PROGRESS' });
+            await this.onExamActive();
         },
 
         async requestFullscreen() {
@@ -1117,11 +1586,14 @@ window.examTaking = function examTaking(config) {
                 clearInterval(this.timerId);
             }
 
-            this.timerId = setInterval(() => {
+            this.timerId = setInterval(async () => {
                 if (this.phase !== 'active') {
                     return;
                 }
-                if (this.remaining > 0) {
+                if (this.timerState) {
+                    this.remaining = tickTimer(this.timerState);
+                    await persistTimer(this.timerState);
+                } else if (this.remaining > 0) {
                     this.remaining -= 1;
                 }
                 if (this.remaining === 0) {
@@ -1254,6 +1726,22 @@ window.examTaking = function examTaking(config) {
 
             const clientEventId = this.makeEventId(type);
 
+            if (!this.networkOnline) {
+                await this.saveAnswersLocally();
+                await enqueueSyncEvent({
+                    attemptId: this.attemptId,
+                    eventType: 'violation',
+                    payload: {
+                        violation_type: type,
+                        client_event_id: clientEventId,
+                        pending_answers: this.buildAnswerPayload(),
+                    },
+                });
+                this.pendingSyncCount += 1;
+                this.applyLocalViolation();
+                return;
+            }
+
             try {
                 const data = await api(this.urls.violations, {
                     method: 'POST',
@@ -1300,6 +1788,63 @@ window.examTaking = function examTaking(config) {
             this.violationModalOpen = false;
         },
 
+        applyLocalViolation() {
+            this.warningCount = Math.min(this.maxWarnings, this.warningCount + 1);
+            this.saveStatus = 'local';
+
+            if (this.warningCount >= this.maxWarnings) {
+                this.phase = 'locked';
+                this.lockReason = 'Maximum violation warnings reached offline.';
+                clearInterval(this.timerId);
+                this.persistLocalAttemptState({
+                    phase: 'locked',
+                    status: 'LOCKED_VIOLATION_LIMIT',
+                    lock_reason: this.lockReason,
+                });
+                this.saveAnswersLocally();
+                return;
+            }
+
+            this.violationMessage = 'A policy violation was detected.';
+            this.violationModalWarning = this.warningCount;
+            const remaining = this.maxWarnings - this.warningCount;
+            this.violationRemainingText = remaining > 0
+                ? `${remaining} more violation${remaining === 1 ? '' : 's'} will result in your examination being automatically locked.`
+                : 'Your examination will be locked on the next violation.';
+            this.violationModalOpen = true;
+            this.persistLocalAttemptState();
+        },
+
+        async saveAnswersLocally() {
+            if (!this.attemptId) {
+                return;
+            }
+            for (const [number, answer] of Object.entries(this.answers)) {
+                const question = this.questions[Number(number) - 1];
+                if (!question) {
+                    continue;
+                }
+                const revision = await examOfflineDb.saveAnswer(
+                    this.attemptId,
+                    question.id,
+                    answer,
+                    !!this.flagged[number],
+                    'pending',
+                );
+                await enqueueSyncEvent({
+                    attemptId: this.attemptId,
+                    eventType: 'answer_updated',
+                    payload: {
+                        question_id: question.id,
+                        answer,
+                        is_flagged: !!this.flagged[number],
+                        client_revision: String(revision),
+                    },
+                });
+            }
+            this.pendingSyncCount = (await getQueueSummary()).pendingCount;
+        },
+
         scheduleSave() {
             if (this.phase !== 'active') {
                 return;
@@ -1315,13 +1860,20 @@ window.examTaking = function examTaking(config) {
             }
 
             try {
-                await api(this.urls.saveAnswers, {
-                    method: 'POST',
-                    body: JSON.stringify({ answers: this.buildAnswerPayload() }),
-                });
-                this.saveStatus = 'saved';
+                await this.saveAnswersLocally();
+                this.saveStatus = 'local';
+                await this.persistLocalAttemptState();
+
+                if (this.networkOnline && !this.offlineOnly) {
+                    await api(this.urls.saveAnswers, {
+                        method: 'POST',
+                        body: JSON.stringify({ answers: this.buildAnswerPayload() }),
+                    });
+                    this.saveStatus = 'saved';
+                    await this.syncWhenOnline();
+                }
             } catch {
-                this.saveStatus = '';
+                this.saveStatus = 'local';
             }
         },
 
@@ -1349,11 +1901,35 @@ window.examTaking = function examTaking(config) {
         },
 
         async submitExam(auto = false) {
-            if (this.submitting || this.phase !== 'active') {
+            if (this.submitting || (this.phase !== 'active' && this.phase !== 'pending_submission')) {
                 return;
             }
             this.submitting = true;
             this.submitOpen = false;
+
+            await this.saveAnswersLocally();
+
+            if (!this.networkOnline || this.offlineOnly) {
+                await enqueueSyncEvent({
+                    attemptId: this.attemptId,
+                    eventType: 'examination_submission',
+                    payload: {
+                        auto,
+                        answers: this.buildAnswerPayload(),
+                        timing_token: this.timingToken,
+                    },
+                });
+                this.pendingSubmission = true;
+                this.phase = 'pending_submission';
+                await this.persistLocalAttemptState({
+                    phase: 'pending_submission',
+                    pending_submission: true,
+                });
+                this.submitting = false;
+                localStorage.removeItem('exam-active-session');
+                clearInterval(this.timerId);
+                return;
+            }
 
             try {
                 const data = await api(this.urls.submit, {
@@ -1363,10 +1939,232 @@ window.examTaking = function examTaking(config) {
                         answers: this.buildAnswerPayload(),
                     }),
                 });
+                localStorage.removeItem('exam-active-session');
+                if (this.examinationId && this.studentId) {
+                    await examOfflineDb.clearExamData(this.examinationId, this.studentId, this.attemptId);
+                }
                 window.location.href = data.result_url || this.resultUrl;
             } catch (error) {
+                if (!this.networkOnline || error.message?.includes('network')) {
+                    this.pendingSubmission = true;
+                    this.phase = 'pending_submission';
+                    this.submitting = false;
+                    return;
+                }
                 this.submitting = false;
                 window.toast?.(error.message || 'Unable to submit examination.', 'error');
+            }
+        },
+
+        async retrySync() {
+            this.syncConflict = false;
+            await this.syncWhenOnline();
+        },
+    };
+};
+
+window.offlineApp = function offlineApp(config) {
+    return {
+        userName: config.userName || '',
+        studentId: config.studentId,
+        bootstrapUrl: config.bootstrapUrl,
+        syncStatusUrl: config.syncStatusUrl,
+        examinationsUrl: config.examinationsUrl,
+        syncUrlTemplate: config.syncUrlTemplate || '',
+        unlocked: false,
+        pinInput: '',
+        pinError: '',
+        online: navigator.onLine,
+        exams: [],
+        loading: true,
+        syncing: false,
+        syncComplete: false,
+
+        async init() {
+            window.addEventListener('online', () => this.handleOnline());
+            window.addEventListener('offline', () => { this.online = false; });
+
+            await this.ensureOfflineSession();
+
+            const pinRequired = await isPinConfigured();
+            if (pinRequired) {
+                this.unlocked = await isUnlocked();
+            } else {
+                this.unlocked = true;
+            }
+
+            if (this.unlocked) {
+                await this.loadExams();
+            } else {
+                this.loading = false;
+            }
+
+            installSyncListeners(() => this.handleOnline());
+        },
+
+        async ensureOfflineSession() {
+            const valid = await isOfflineSessionValid();
+            if (valid || !navigator.onLine) {
+                return;
+            }
+            try {
+                await bootstrapOfflineAccess(
+                    this.bootstrapUrl,
+                    getDeviceIdentifier(),
+                    getDeviceName(),
+                );
+            } catch {
+                /* session refresh is best-effort when online */
+            }
+        },
+
+        async submitPin() {
+            const ok = await verifyPin(this.pinInput);
+            if (ok) {
+                this.unlocked = true;
+                this.pinError = '';
+                this.pinInput = '';
+                await this.loadExams();
+            } else {
+                this.pinError = 'Incorrect PIN. Please try again.';
+            }
+        },
+
+        async loadExams() {
+            this.loading = true;
+            try {
+                this.exams = await listCatalogEntries(this.studentId);
+            } catch {
+                this.exams = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        statusClass(status) {
+            const map = {
+                [EXAM_STATUS.READY]: 'text-success-ink',
+                [EXAM_STATUS.IN_PROGRESS]: 'text-brand',
+                [EXAM_STATUS.SUBMISSION_PENDING]: 'text-warning-ink',
+                [EXAM_STATUS.LOCKED]: 'text-danger-ink',
+                [EXAM_STATUS.NOT_PREPARED]: 'text-muted',
+                [EXAM_STATUS.INTERNET_REQUIRED]: 'text-muted',
+            };
+            return map[status] || 'text-muted';
+        },
+
+        startExam(exam) {
+            window.location.href = exam.take_url;
+        },
+
+        resumeExam(exam) {
+            window.location.href = exam.take_url;
+        },
+
+        async handleOnline() {
+            this.online = true;
+            if (this.syncing) {
+                return;
+            }
+            this.syncing = true;
+            this.syncComplete = false;
+
+            try {
+                await this.ensureOfflineSession();
+                if (this.syncUrlTemplate) {
+                    const { syncAllPending } = await import('./offline/sync-engine.js');
+                    await syncAllPending(this.syncUrlTemplate);
+                }
+                this.syncComplete = true;
+                if (this.unlocked) {
+                    await this.loadExams();
+                }
+            } catch {
+                /* sync retries automatically */
+            } finally {
+                this.syncing = false;
+            }
+        },
+    };
+};
+
+window.confirmLogoutIfPendingSync = async function confirmLogoutIfPendingSync() {
+    try {
+        const pending = await examOfflineDb.hasPendingSync();
+        if (!pending) {
+            return true;
+        }
+        return window.confirm(
+            'You have examination data waiting to synchronize. Logging out may affect access to this data on this device.\n\nLog out anyway?',
+        );
+    } catch {
+        return true;
+    }
+};
+
+window.examSyncStatus = function examSyncStatus(config = {}) {
+    return {
+        online: navigator.onLine,
+        pendingCount: 0,
+        lastSyncedAt: '',
+        queue: [],
+        loading: true,
+        syncing: false,
+        error: '',
+        syncUrlTemplate: config.syncUrlTemplate || '',
+
+        init() {
+            window.addEventListener('online', () => { this.online = true; });
+            window.addEventListener('offline', () => { this.online = false; });
+            this.refresh();
+        },
+
+        async refresh() {
+            this.loading = true;
+            try {
+                const { getQueueSummary } = await import('./offline/sync-queue.js');
+                const summary = await getQueueSummary();
+                this.queue = summary.pending;
+                this.pendingCount = summary.pendingCount;
+                this.lastSyncedAt = summary.lastSyncedAt
+                    ? new Date(summary.lastSyncedAt).toLocaleTimeString()
+                    : '';
+            } catch {
+                this.error = 'Unable to read local sync queue.';
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        formatEvent(item) {
+            const type = item.event_type || 'event';
+            if (type.includes('answer')) {
+                const q = item.payload?.question_id;
+                return `Answer — Question ${q || '?'}`;
+            }
+            if (type === 'violation') {
+                return 'Violation Event';
+            }
+            if (type === 'examination_submission') {
+                return 'Exam Submission';
+            }
+            return type.replace(/_/g, ' ');
+        },
+
+        async retrySync() {
+            if (!this.online || this.syncing) {
+                return;
+            }
+            this.syncing = true;
+            this.error = '';
+            try {
+                const { syncAllPending } = await import('./offline/sync-engine.js');
+                await syncAllPending(this.syncUrlTemplate);
+                await this.refresh();
+            } catch {
+                this.error = 'Synchronization failed. Please try again.';
+            } finally {
+                this.syncing = false;
             }
         },
     };

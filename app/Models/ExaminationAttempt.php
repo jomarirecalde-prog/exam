@@ -18,6 +18,8 @@ class ExaminationAttempt extends Model
         'device_info', 'ip_address', 'tab_switch_count', 'suspicious_activity_count', 'question_order',
         'warning_count', 'policy_accepted_at', 'policy_version', 'locked_at', 'lock_reason',
         'reactivated_at', 'reactivated_by', 'reactivation_reason', 'reactivation_count',
+        'offline_enabled', 'offline_prepared_at', 'offline_session_id', 'authorized_device_id',
+        'last_synced_at', 'pending_submission_at', 'offline_timing_token',
     ];
 
     protected function casts(): array
@@ -31,6 +33,10 @@ class ExaminationAttempt extends Model
             'policy_accepted_at' => 'datetime',
             'locked_at' => 'datetime',
             'reactivated_at' => 'datetime',
+            'offline_enabled' => 'boolean',
+            'offline_prepared_at' => 'datetime',
+            'last_synced_at' => 'datetime',
+            'pending_submission_at' => 'datetime',
             'score' => 'decimal:2',
             'percentage' => 'decimal:2',
             'passed' => 'boolean',
@@ -81,6 +87,11 @@ class ExaminationAttempt extends Model
     public function reactivator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reactivated_by');
+    }
+
+    public function syncEvents(): HasMany
+    {
+        return $this->hasMany(ExamSyncEvent::class);
     }
 
     public function maxWarnings(): int

@@ -34,6 +34,15 @@
                 </dl>
                 <a href="{{ route('profile') }}" class="btn-secondary mt-6 inline-flex" wire:navigate>Profile & password</a>
             </x-ui.card>
+            <x-ui.card x-data="pwaInstallPrompt()" x-init="init()">
+                <h2 class="ui-section">Application</h2>
+                <p class="mt-2 text-sm text-muted">Install this examination system as an application for faster access and offline examination support.</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button type="button" class="btn-primary" x-show="canInstall" @click="install()">Install App</button>
+                    <span class="text-sm text-muted" x-show="installed">Application installed</span>
+                    <span class="text-sm text-muted" x-show="!canInstall && !installed">Installation is available in supported browsers when signed in.</span>
+                </div>
+            </x-ui.card>
         </div>
     </div>
 </x-app-layout>

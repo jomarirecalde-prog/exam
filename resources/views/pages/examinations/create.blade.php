@@ -251,6 +251,29 @@
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.randomize"> Randomize questions</label>
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.backNav"> Allow back navigation</label>
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.autoSubmit"> Auto-submit when time expires</label>
+
+                        <div class="sm:col-span-2 mt-2 rounded-card border border-line bg-canvas p-4">
+                            <p class="text-sm font-medium text-ink">Offline Examination Mode</p>
+                            <p class="mt-1 text-xs text-muted">Configure whether students can continue after losing internet connection.</p>
+                            <select class="ui-input mt-3" x-model="form.offlineMode">
+                                <option value="disabled">Disabled — requires continuous connectivity</option>
+                                <option value="allowed">Allowed — can continue offline after preparation</option>
+                                <option value="required_preparation">Required Preparation — must prepare before start</option>
+                            </select>
+                            <div class="mt-4 space-y-2" x-show="form.offlineMode !== 'disabled'" x-cloak>
+                                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.allowOfflineContinuation"> Allow offline continuation</label>
+                                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.requireOfflinePreparation"> Require complete offline preparation before start</label>
+                                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.allowPendingOfflineSubmission"> Allow pending offline submission</label>
+                                <div class="grid gap-4 sm:grid-cols-2 pt-2">
+                                    <x-ui.field label="Maximum Offline Duration" for="maxOfflineDuration" help="Minutes without connectivity after preparation.">
+                                        <input class="ui-input" id="maxOfflineDuration" type="number" min="5" max="480" x-model="form.maxOfflineDuration">
+                                    </x-ui.field>
+                                    <x-ui.field label="Synchronization Grace Period" for="syncGracePeriod" help="Minutes allowed to sync after reconnecting.">
+                                        <input class="ui-input" id="syncGracePeriod" type="number" min="5" max="120" x-model="form.syncGracePeriod">
+                                    </x-ui.field>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

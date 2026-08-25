@@ -21,6 +21,7 @@ class ExaminationAttemptService
     public function __construct(
         protected ExaminationAccessService $access,
         protected GradingEngine $grading,
+        protected ?OfflineExamPreparationService $offlinePrep = null,
     ) {}
 
     public function findResumableAttempt(Student $student, Examination $examination): ?ExaminationAttempt
@@ -114,6 +115,15 @@ class ExaminationAttemptService
             ]);
 
             $this->ensureSnapshots($attempt, $examination);
+
+            $attempt = $attempt->fresh(['answers']);
+
+            if ($attempt->offline_enabled) {
+                $offlinePrep = $this->offlinePrep ?? app(OfflineExamPreparationService::class);
+                $attempt->update([
+                    'offline_timing_token' => $offlinePrep->issueTimingToken($attempt),
+                ]);
+            }
 
             return $attempt->fresh(['answers']);
         });
@@ -209,6 +219,13 @@ class ExaminationAttemptService
             'locked_at' => $attempt->locked_at?->toIso8601String(),
             'lock_reason' => $attempt->lock_reason,
             'reactivated_at' => $attempt->reactivated_at?->toIso8601String(),
+            'offline_enabled' => (bool) $attempt->offline_enabled,
+            'offline_prepared_at' => $attempt->offline_prepared_at?->toIso8601String(),
+            'offline_session_id' => $attempt->offline_session_id,
+            'authorized_device_id' => $attempt->authorized_device_id,
+            'last_synced_at' => $attempt->last_synced_at?->toIso8601String(),
+            'pending_submission_at' => $attempt->pending_submission_at?->toIso8601String(),
+            'offline_timing_token' => $attempt->offline_timing_token,
             'answers' => $attempt->answers->mapWithKeys(function (StudentAnswer $answer) {
                 $value = $answer->answer['value'] ?? $answer->answer;
 

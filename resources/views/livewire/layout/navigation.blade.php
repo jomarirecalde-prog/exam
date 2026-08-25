@@ -74,6 +74,11 @@ new class extends Component
                     <x-dropdown-link href="{{ route('settings.index') }}" wire:navigate>
                         <x-icon name="settings" :size="16" /> {{ __('Settings') }}
                     </x-dropdown-link>
+                    @if(auth()->user()?->hasRole('student'))
+                        <x-dropdown-link href="{{ route('offline.sync') }}" wire:navigate>
+                            <x-icon name="refresh-cw" :size="16" /> {{ __('Sync Status') }}
+                        </x-dropdown-link>
+                    @endif
                     <x-dropdown-link href="{{ route('profile') }}#password" wire:navigate>
                         <x-icon name="key" :size="16" /> {{ __('Change Password') }}
                     </x-dropdown-link>
@@ -87,7 +92,11 @@ new class extends Component
                         </div>
                     </div>
                     <div class="my-1 border-t border-line"></div>
-                    <button wire:click="logout" class="w-full text-start">
+                    <button
+                        type="button"
+                        class="w-full text-start"
+                        x-on:click.prevent="async () => { if (await window.confirmLogoutIfPendingSync?.()) { $wire.logout(); } }"
+                    >
                         <x-dropdown-link>
                             <x-icon name="log-out" :size="16" /> {{ __('Logout') }}
                         </x-dropdown-link>

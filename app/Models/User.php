@@ -36,6 +36,7 @@ class User extends Authenticatable
         'password',
         'remember_token',
         'two_factor_secret',
+        'offline_app_pin_hash',
     ];
 
     protected function casts(): array

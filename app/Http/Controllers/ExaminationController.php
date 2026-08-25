@@ -344,6 +344,12 @@ class ExaminationController extends Controller
                 'randomize' => old('randomize_questions', $examination?->settings?->randomize_questions ?? true),
                 'backNav' => old('allow_back_navigation', $examination?->settings?->allow_back_navigation ?? true),
                 'autoSubmit' => old('auto_submit_on_expire', $examination?->settings?->auto_submit_on_expire ?? true),
+                'offlineMode' => old('offline_examination_mode', $examination?->settings?->offline_examination_mode?->value ?? 'disabled'),
+                'allowOfflineContinuation' => old('allow_offline_continuation', $examination?->settings?->allow_offline_continuation ?? false),
+                'requireOfflinePreparation' => old('require_offline_preparation', $examination?->settings?->require_offline_preparation ?? false),
+                'allowPendingOfflineSubmission' => old('allow_pending_offline_submission', $examination?->settings?->allow_pending_offline_submission ?? true),
+                'maxOfflineDuration' => old('max_offline_duration_minutes', $examination?->settings?->max_offline_duration_minutes ?? 30),
+                'syncGracePeriod' => old('sync_grace_period_minutes', $examination?->settings?->sync_grace_period_minutes ?? 15),
             ],
             'errors' => $request->session()->get('errors')?->getBag('default')->toArray() ?? [],
         ];
@@ -362,6 +368,12 @@ class ExaminationController extends Controller
                 'randomize_questions' => (bool) ($data['randomize_questions'] ?? false),
                 'allow_back_navigation' => (bool) ($data['allow_back_navigation'] ?? true),
                 'auto_submit_on_expire' => (bool) ($data['auto_submit_on_expire'] ?? true),
+                'offline_examination_mode' => $data['offline_examination_mode'] ?? 'disabled',
+                'allow_offline_continuation' => (bool) ($data['allow_offline_continuation'] ?? false),
+                'require_offline_preparation' => (bool) ($data['require_offline_preparation'] ?? false),
+                'allow_pending_offline_submission' => (bool) ($data['allow_pending_offline_submission'] ?? true),
+                'max_offline_duration_minutes' => $data['max_offline_duration_minutes'] ?? null,
+                'sync_grace_period_minutes' => (int) ($data['sync_grace_period_minutes'] ?? 15),
             ]
         );
     }

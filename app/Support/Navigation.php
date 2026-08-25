@@ -84,6 +84,7 @@ class Navigation
             'reports.index' => [['Results'], ['Reports']],
             'monitoring.index' => [['Monitoring']],
             'sync.index' => [['Synchronization']],
+            'offline.sync' => [['Sync Status']],
             'audit.index' => [['Audit Logs']],
             'settings.index' => [['Settings']],
             'examinations.take' => [['Examination']],
@@ -179,6 +180,9 @@ class Navigation
                     : null,
                 $user->hasAnyRole(['superadmin', 'admin'])
                     ? ['label' => 'Synchronization', 'route' => 'sync.index', 'icon' => 'refresh-cw']
+                    : null,
+                $user->hasRole('student')
+                    ? ['label' => 'Sync Status', 'route' => 'offline.sync', 'icon' => 'refresh-cw']
                     : null,
                 $user->hasAnyRole(['superadmin', 'admin'])
                     ? ['label' => 'Audit Logs', 'route' => 'audit.index', 'icon' => 'scroll']

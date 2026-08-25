@@ -106,6 +106,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/answers/{question}', [\App\Http\Controllers\ExaminationAttemptController::class, 'saveAnswer'])->name('answers.store');
         Route::post('/violations', [\App\Http\Controllers\ExaminationAttemptController::class, 'recordViolation'])->name('violations.store');
         Route::post('/submit', [\App\Http\Controllers\ExaminationAttemptController::class, 'submit'])->name('submit');
+        Route::post('/prepare-offline', [\App\Http\Controllers\OfflineExamPreparationController::class, 'prepare'])->name('prepare-offline');
+    });
+
+    Route::prefix('exam-attempts/{attempt}')->name('exam-attempts.')->group(function () {
+        Route::post('/sync', [\App\Http\Controllers\OfflineExamSyncController::class, 'sync'])->name('sync');
+        Route::post('/submit-offline', [\App\Http\Controllers\OfflineExamSyncController::class, 'submitOffline'])->name('submit-offline');
+    });
+
+    Route::middleware('role:student')->group(function () {
+        Route::get('/sync-status', [\App\Http\Controllers\OfflineExamSyncController::class, 'syncStatus'])->name('sync.status');
+        Route::get('/offline/sync', [PlatformController::class, 'offlineSync'])->name('offline.sync');
+        Route::get('/offline/app', [\App\Http\Controllers\OfflineBootstrapController::class, 'app'])->name('offline.app');
+        Route::get('/offline/examinations/{examination}/take', [\App\Http\Controllers\OfflineBootstrapController::class, 'takeExam'])->name('offline.examinations.take');
+        Route::post('/offline/bootstrap', [\App\Http\Controllers\OfflineBootstrapController::class, 'bootstrap'])->name('offline.bootstrap');
+        Route::get('/offline/pin-configured', [\App\Http\Controllers\OfflineBootstrapController::class, 'pinConfigured'])->name('offline.pin-configured');
+        Route::post('/offline/app-pin', [\App\Http\Controllers\OfflineBootstrapController::class, 'setAppPin'])->name('offline.app-pin.store');
+        Route::delete('/offline/app-pin', [\App\Http\Controllers\OfflineBootstrapController::class, 'clearAppPin'])->name('offline.app-pin.destroy');
     });
 
     Route::middleware('role:superadmin,admin,instructor')->prefix('monitoring')->name('monitoring.')->group(function () {

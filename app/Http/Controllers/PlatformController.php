@@ -123,6 +123,11 @@ class PlatformController extends Controller
         ]);
     }
 
+    public function offlineSync(): View
+    {
+        return view('pages.offline.sync-status');
+    }
+
     public function take(
         Examination $examination,
         ExaminationAccessService $access,
@@ -169,6 +174,13 @@ class PlatformController extends Controller
                 'detectTabSwitch' => (bool) ($settings?->detect_tab_switch ?? true),
                 'disableCopyPaste' => (bool) ($settings?->disable_copy_paste ?? true),
                 'disableRightClick' => (bool) ($settings?->disable_right_click ?? true),
+            ],
+            'offline' => [
+                'supported' => (bool) ($settings?->supportsOffline() ?? false),
+                'mode' => $settings?->offline_examination_mode?->value ?? 'disabled',
+                'mode_label' => $settings?->offline_examination_mode?->label() ?? 'Disabled',
+                'require_preparation' => (bool) ($settings?->require_offline_preparation ?? false),
+                'allow_pending_submission' => (bool) ($settings?->allow_pending_offline_submission ?? true),
             ],
         ]);
     }

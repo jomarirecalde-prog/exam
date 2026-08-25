@@ -6,6 +6,17 @@
         </header>
 
         <section class="mt-10">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="ui-kicker">Offline Examinations</h2>
+                <a href="{{ route('offline.app') }}" class="text-sm font-medium text-brand hover:underline">Open Offline Dashboard</a>
+            </div>
+            <div class="mt-4 rounded-card border border-line bg-canvas p-4 text-sm leading-6 text-muted">
+                <p>Install this application and prepare examinations while online to take them offline from the installed app.</p>
+                <p class="mt-2"><a href="{{ route('offline.sync') }}" class="font-medium text-brand hover:underline">View sync status</a></p>
+            </div>
+        </section>
+
+        <section class="mt-10">
             <h2 class="ui-kicker">Upcoming</h2>
             <div class="mt-4 space-y-4">
                 @forelse ($upcomingExams as $exam)
