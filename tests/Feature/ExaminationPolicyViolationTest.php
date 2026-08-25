@@ -284,7 +284,12 @@ class ExaminationPolicyViolationTest extends TestCase
         $this->actingAs($instructorUser)
             ->getJson(route('monitoring.data', $examination))
             ->assertOk()
-            ->assertJsonStructure(['attempts' => [['student_name', 'warning_count', 'status']]]);
+            ->assertJsonStructure([
+                'summary' => ['total', 'taking_exam', 'not_started', 'submitted', 'offline', 'locked'],
+                'students' => [['student_name', 'warning_count', 'status', 'progress_percent']],
+                'activities',
+                'examination',
+            ]);
     }
 
     /**

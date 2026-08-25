@@ -1061,6 +1061,7 @@ window.examTaking = function examTaking(config) {
         violationModalWarning: 0,
         violationRemainingText: '',
         monitoringBound: false,
+        progressTimer: null,
         focusLossCooldown: false,
         lastClientEventId: null,
         requireFullscreen: config.monitoring?.requireFullscreen !== false,
@@ -1125,9 +1126,58 @@ window.examTaking = function examTaking(config) {
                 if (this.networkOnline) {
                     this.syncWhenOnline();
                 }
+                this.scheduleProgressReport();
             };
             window.addEventListener('online', update);
             window.addEventListener('offline', update);
+        },
+
+        connectionStatusForMonitoring() {
+            if (!this.networkOnline) {
+                return 'offline';
+            }
+            if (this.pendingSyncCount > 0) {
+                return 'reconnecting';
+            }
+
+            return 'online';
+        },
+
+        scheduleProgressReport() {
+            if (this.phase !== 'active' || !this.attemptId) {
+                return;
+            }
+
+            clearTimeout(this.progressTimer);
+            this.progressTimer = setTimeout(() => this.reportProgress(), 400);
+        },
+
+        async reportProgress() {
+            if (this.phase !== 'active' || !this.attemptId) {
+                return;
+            }
+
+            const payload = {
+                current_question_index: this.current,
+                connection_status: this.connectionStatusForMonitoring(),
+            };
+
+            try {
+                if (this.networkOnline && !this.offlineOnly && this.urls.progress) {
+                    await api(this.urls.progress, {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await enqueueSyncEvent({
+                        attemptId: this.attemptId,
+                        eventType: 'progress_update',
+                        payload,
+                    });
+                }
+            } catch {
+                /* progress reporting is best-effort */
+            }
         },
 
         async bootstrapFromLocalPackage() {
@@ -1983,6 +2033,7 @@ window.examTaking = function examTaking(config) {
                     this.saveStatus = 'saved';
                     await this.syncWhenOnline();
                 }
+                this.scheduleProgressReport();
             } catch {
                 this.saveStatus = 'local';
             }
@@ -2007,16 +2058,19 @@ window.examTaking = function examTaking(config) {
             this.flushSave();
             this.current = number;
             this.navigatorOpen = false;
+            this.scheduleProgressReport();
         },
 
         prev() {
             this.flushSave();
             this.current = Math.max(1, this.current - 1);
+            this.scheduleProgressReport();
         },
 
         next() {
             this.flushSave();
             this.current = Math.min(this.total, this.current + 1);
+            this.scheduleProgressReport();
         },
 
         async submitExam(auto = false) {
@@ -2329,14 +2383,29 @@ window.examMonitoring = function examMonitoring(config) {
         examinations: config.examinations || [],
         selectedExamId: config.examinations?.[0]?.id || null,
         selectedExam: config.examinations?.[0] || null,
-        attempts: [],
+        examination: null,
+        summary: {},
+        students: [],
+        activities: [],
+        examSummaries: {},
         loading: false,
+        polling: false,
         lastUpdated: '',
+        lastSyncAt: null,
         pollTimer: null,
+        searchQuery: '',
+        statusFilter: 'all',
+        sortBy: 'priority',
+        showAllActivity: false,
         historyOpen: false,
         historyLoading: false,
         historyItems: [],
         historyMeta: '',
+        historyLocked: false,
+        historyOfflineNote: '',
+        drawerOpen: false,
+        drawerLoading: false,
+        drawerRow: null,
         reactivateOpen: false,
         reactivateRow: null,
         reactivationReason: '',
@@ -2347,21 +2416,81 @@ window.examMonitoring = function examMonitoring(config) {
         maxWarnings: config.maxWarnings || 3,
         violationsUrlTemplate: config.violationsUrl,
         reactivateUrlTemplate: config.reactivateUrl,
+        attemptUrlTemplate: config.attemptUrl,
+        notifications: [],
+        knownStates: {},
 
         init() {
             if (this.selectedExam) {
-                this.refresh();
-                this.pollTimer = setInterval(() => this.refresh(true), 15000);
+                this.refresh(false, true);
+                this.pollTimer = setInterval(() => this.refresh(true), 5000);
             }
+        },
+
+        examCardStats(examId) {
+            const cached = this.examSummaries[examId];
+            if (!cached) {
+                return { taking: '—', total: '—' };
+            }
+
+            return {
+                taking: (cached.taking_exam || 0) + (cached.offline || 0),
+                total: cached.total || 0,
+            };
+        },
+
+        get filteredStudents() {
+            let rows = [...this.students];
+
+            if (this.statusFilter !== 'all') {
+                rows = rows.filter((row) => row.status_filter === this.statusFilter);
+            }
+
+            const query = (this.searchQuery || '').trim().toLowerCase();
+            if (query) {
+                rows = rows.filter((row) =>
+                    (row.student_name || '').toLowerCase().includes(query)
+                    || (row.student_id || '').toLowerCase().includes(query),
+                );
+            }
+
+            rows.sort((a, b) => {
+                if (this.sortBy === 'priority') {
+                    return (a.priority || 99) - (b.priority || 99);
+                }
+                if (this.sortBy === 'progress') {
+                    return (b.progress_percent || 0) - (a.progress_percent || 0);
+                }
+                if (this.sortBy === 'remaining') {
+                    return (a.remaining_seconds ?? 999999) - (b.remaining_seconds ?? 999999);
+                }
+                if (this.sortBy === 'warnings') {
+                    return (b.warning_count || 0) - (a.warning_count || 0);
+                }
+                if (this.sortBy === 'activity') {
+                    return String(b.last_activity_at || '').localeCompare(String(a.last_activity_at || ''));
+                }
+
+                return 0;
+            });
+
+            return rows;
+        },
+
+        get visibleActivities() {
+            const items = this.activities || [];
+            return this.showAllActivity ? items : items.slice(0, 12);
         },
 
         selectExam(exam) {
             this.selectedExamId = exam.id;
             this.selectedExam = exam;
-            this.refresh();
+            this.lastSyncAt = null;
+            this.students = [];
+            this.refresh(false, true);
         },
 
-        async refresh(silent = false) {
+        async refresh(silent = false, full = false) {
             if (!this.selectedExam?.dataUrl) {
                 return;
             }
@@ -2369,33 +2498,173 @@ window.examMonitoring = function examMonitoring(config) {
             if (!silent) {
                 this.loading = true;
             }
+            this.polling = silent;
+
+            const url = new URL(this.selectedExam.dataUrl, window.location.origin);
+            if (!full && this.lastSyncAt) {
+                url.searchParams.set('since', this.lastSyncAt);
+            }
 
             try {
-                const data = await api(this.selectedExam.dataUrl);
-                this.attempts = data.attempts || [];
+                const data = await api(url.toString());
+                this.examination = data.examination || null;
+                this.summary = data.summary || {};
+                this.activities = data.activities || [];
+
+                if (this.selectedExamId && this.summary) {
+                    this.examSummaries[this.selectedExamId] = this.summary;
+                }
+
+                if (full || !this.lastSyncAt || !data.students?.length) {
+                    this.students = data.students || [];
+                } else {
+                    this.mergeStudents(data.students || []);
+                }
+
+                this.detectNotifications(data.students || this.students);
+                this.lastSyncAt = data.server_time || new Date().toISOString();
                 this.lastUpdated = new Date().toLocaleTimeString();
+
+                if (this.drawerOpen && this.drawerRow?.attempt_id) {
+                    const updated = this.students.find((row) => row.attempt_id === this.drawerRow.attempt_id);
+                    if (updated) {
+                        this.drawerRow = updated;
+                    }
+                }
             } catch (error) {
                 if (!silent) {
                     window.toast?.(error.message, 'error');
                 }
             } finally {
                 this.loading = false;
+                this.polling = false;
             }
+        },
+
+        mergeStudents(updates) {
+            if (!updates.length) {
+                return;
+            }
+
+            const map = new Map(this.students.map((row) => [row.student_db_id, row]));
+            updates.forEach((row) => {
+                map.set(row.student_db_id, row);
+            });
+            this.students = Array.from(map.values());
+        },
+
+        detectNotifications(rows) {
+            rows.forEach((row) => {
+                const key = row.attempt_id ? `attempt-${row.attempt_id}` : `student-${row.student_db_id}`;
+                const previous = this.knownStates[key];
+                const current = {
+                    monitoring_status: row.monitoring_status,
+                    warning_count: row.warning_count,
+                    connection_status: row.connection_status,
+                };
+
+                if (previous) {
+                    if (row.warning_count >= 2 && row.warning_count > previous.warning_count) {
+                        this.pushNotification(
+                            `${row.student_name} reached Warning ${row.warning_count}.`,
+                            row.warning_count >= row.max_warnings ? 'critical' : 'warning',
+                        );
+                    }
+                    if (row.monitoring_status === 'LOCKED' && previous.monitoring_status !== 'LOCKED') {
+                        this.pushNotification(`${row.student_name}'s examination was locked.`, 'critical');
+                    }
+                    if (row.monitoring_status === 'OFFLINE' && previous.connection_status === 'online') {
+                        this.pushNotification(`${row.student_name} went offline.`, 'warning');
+                    }
+                    if (row.monitoring_status === 'SUBMITTED' && previous.monitoring_status !== 'SUBMITTED') {
+                        this.pushNotification(`${row.student_name} submitted the examination.`, 'info');
+                    }
+                    if (row.monitoring_status === 'PENDING_SUBMISSION' && previous.monitoring_status !== 'PENDING_SUBMISSION') {
+                        this.pushNotification(`${row.student_name} has a pending offline submission.`, 'warning');
+                    }
+                }
+
+                this.knownStates[key] = current;
+            });
+        },
+
+        pushNotification(message, severity = 'info') {
+            const id = `${Date.now()}-${Math.random()}`;
+            this.notifications.push({ id, message, severity });
+            setTimeout(() => {
+                this.notifications = this.notifications.filter((note) => note.id !== id);
+            }, severity === 'critical' ? 8000 : 5000);
+        },
+
+        statusBadgeClass(status) {
+            return {
+                'bg-brand-soft text-brand': ['TAKING_EXAM', 'REACTIVATED'].includes(status),
+                'bg-danger-soft text-danger-ink': status === 'LOCKED',
+                'bg-success-soft text-success-ink': status === 'SUBMITTED',
+                'bg-warning-soft text-warning-ink': ['OFFLINE', 'PENDING_SUBMISSION', 'PAUSED'].includes(status),
+                'bg-canvas text-muted': ['NOT_STARTED', 'PREPARING', 'EXPIRED'].includes(status),
+            };
+        },
+
+        connectionClass(status) {
+            return {
+                'text-success-ink': status === 'online',
+                'text-warning-ink': status === 'reconnecting',
+                'text-muted': status === 'offline' || status === 'unknown',
+            };
+        },
+
+        connectionDotClass(status) {
+            return {
+                'bg-success-ink': status === 'online',
+                'bg-warning-ink animate-pulse': status === 'reconnecting',
+                'bg-muted': status === 'offline' || status === 'unknown',
+            };
         },
 
         attemptUrl(template, attemptId) {
             return template.replace('__ATTEMPT__', attemptId);
         },
 
+        async openStudent(row) {
+            this.drawerOpen = true;
+            this.drawerRow = row;
+            this.drawerLoading = false;
+
+            if (!row.attempt_id || !this.attemptUrlTemplate) {
+                return;
+            }
+
+            this.drawerLoading = true;
+            try {
+                const data = await api(this.attemptUrl(this.attemptUrlTemplate, row.attempt_id));
+                this.drawerRow = data.student || row;
+            } catch {
+                /* keep row snapshot */
+            } finally {
+                this.drawerLoading = false;
+            }
+        },
+
         async viewViolations(row) {
+            if (!row.attempt_id) {
+                window.toast?.('This student has no examination attempt yet.', 'error');
+                return;
+            }
+
             this.historyOpen = true;
             this.historyLoading = true;
             this.historyItems = [];
+            this.historyLocked = row.monitoring_status === 'LOCKED';
+            this.historyOfflineNote = row.connection_status === 'offline'
+                ? 'Offline violations shown reflect the last synchronized data. Additional offline events may still be pending.'
+                : '';
             this.historyMeta = `${row.student_name || 'Student'} · ${row.warning_count}/${row.max_warnings} warnings`;
 
             try {
                 const data = await api(this.attemptUrl(this.violationsUrlTemplate, row.attempt_id));
                 this.historyItems = data.violations || [];
+                this.historyLocked = data.status === 'LOCKED_VIOLATION_LIMIT' || this.historyLocked;
             } catch (error) {
                 window.toast?.(error.message, 'error');
             } finally {
@@ -2413,7 +2682,7 @@ window.examMonitoring = function examMonitoring(config) {
         },
 
         async submitReactivate() {
-            if (!this.reactivateRow || this.reactivateSubmitting) {
+            if (!this.reactivateRow?.attempt_id || this.reactivateSubmitting) {
                 return;
             }
 
@@ -2432,7 +2701,7 @@ window.examMonitoring = function examMonitoring(config) {
             this.reactivateSubmitting = true;
 
             try {
-                await api(this.attemptUrl(this.reactivateUrlTemplate, this.reactivateRow.attempt_id), {
+                const data = await api(this.attemptUrl(this.reactivateUrlTemplate, this.reactivateRow.attempt_id), {
                     method: 'POST',
                     body: JSON.stringify({
                         reactivation_reason: reason,
@@ -2442,9 +2711,16 @@ window.examMonitoring = function examMonitoring(config) {
                             : null,
                     }),
                 });
+
                 this.reactivateOpen = false;
-                window.toast?.('Examination attempt reactivated.', 'success');
-                await this.refresh();
+                const pending = data.attempt?.reactivation_pending;
+                window.toast?.(
+                    pending
+                        ? 'Reactivation authorized. It will apply when the student reconnects.'
+                        : 'Examination attempt reactivated.',
+                    'success',
+                );
+                await this.refresh(false, true);
             } catch (error) {
                 this.reactivateError = error.message;
             } finally {

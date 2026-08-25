@@ -256,7 +256,20 @@ class ExamAttemptSyncService
      */
     protected function processProgressEvent(ExaminationAttempt $attempt, array $payload): array
     {
-        return ['recorded' => true, 'remaining_seconds' => $attempt->remainingSeconds()];
+        app(ExamAttemptProgressService::class)->recordProgress(
+            $attempt,
+            isset($payload['current_question_index']) ? (int) $payload['current_question_index'] : null,
+            isset($payload['connection_status']) ? (string) $payload['connection_status'] : 'offline',
+        );
+
+        if ($attempt->reactivation_pending && $attempt->reactivated_at) {
+            $attempt->update(['reactivation_pending' => false]);
+        }
+
+        return [
+            'recorded' => true,
+            'remaining_seconds' => $attempt->fresh()->remainingSeconds(),
+        ];
     }
 
     /**

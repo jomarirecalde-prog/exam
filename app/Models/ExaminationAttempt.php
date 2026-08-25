@@ -20,6 +20,7 @@ class ExaminationAttempt extends Model
         'reactivated_at', 'reactivated_by', 'reactivation_reason', 'reactivation_count',
         'offline_enabled', 'offline_prepared_at', 'offline_session_id', 'authorized_device_id',
         'last_synced_at', 'pending_submission_at', 'offline_timing_token',
+        'current_question_index', 'last_activity_at', 'connection_status', 'reactivation_pending',
     ];
 
     protected function casts(): array
@@ -37,6 +38,8 @@ class ExaminationAttempt extends Model
             'offline_prepared_at' => 'datetime',
             'last_synced_at' => 'datetime',
             'pending_submission_at' => 'datetime',
+            'last_activity_at' => 'datetime',
+            'reactivation_pending' => 'boolean',
             'score' => 'decimal:2',
             'percentage' => 'decimal:2',
             'passed' => 'boolean',

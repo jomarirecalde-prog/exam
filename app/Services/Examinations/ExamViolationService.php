@@ -112,6 +112,8 @@ class ExamViolationService
 
             $attempt->update($updates);
 
+            app(ExamAttemptProgressService::class)->recordProgress($attempt->fresh());
+
             return $this->buildResponse($attempt->fresh(), $violation, locked: $locked);
         });
     }

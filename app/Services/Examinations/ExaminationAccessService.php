@@ -5,10 +5,12 @@ namespace App\Services\Examinations;
 use App\Enums\AttemptStatus;
 use App\Enums\ExaminationAccessMode;
 use App\Enums\ExamStatus;
+use App\Enums\StudentSubjectEnrollmentStatus;
 use App\Models\Examination;
 use App\Models\ExaminationAttempt;
 use App\Models\Grade;
 use App\Models\Student;
+use App\Models\StudentSubject;
 use App\Models\User;
 use App\Services\Students\StudentSubjectEnrollmentService;
 use Illuminate\Support\Collection;
@@ -145,6 +147,74 @@ class ExaminationAccessService
         }
 
         return 'You are not authorized to access this examination.';
+    }
+
+    /**
+     * @return Collection<int, Student>
+     */
+    public function eligibleStudents(Examination $examination): Collection
+    {
+        $examination->loadMissing(['sections', 'assignedStudents.user', 'assignedStudents.section', 'assignedStudents.program']);
+
+        if ($examination->needs_section_review) {
+            return collect();
+        }
+
+        $accessMode = $examination->access_mode ?? ExaminationAccessMode::SubjectAndSections;
+
+        if ($accessMode === ExaminationAccessMode::SpecificStudents) {
+            return $examination->assignedStudents()
+                ->with(['user', 'section', 'program'])
+                ->orderBy('student_id')
+                ->get();
+        }
+
+        $verificationRequired = $this->subjectEnrollments->subjectVerificationRequired();
+        $statuses = $verificationRequired
+            ? [StudentSubjectEnrollmentStatus::Verified]
+            : [StudentSubjectEnrollmentStatus::Verified, StudentSubjectEnrollmentStatus::PendingVerification];
+
+        $query = Student::query()
+            ->with(['user', 'section', 'program'])
+            ->where('is_active', true);
+
+        $usesSubjectEnrollments = StudentSubject::query()->exists();
+
+        if ($usesSubjectEnrollments) {
+            $query->whereHas('subjectEnrollments', function ($enrollmentQuery) use ($examination, $statuses) {
+                $enrollmentQuery
+                    ->where('academic_year_id', $examination->academic_year_id)
+                    ->where('semester_id', $examination->semester_id)
+                    ->whereIn('status', $statuses);
+
+                if ($examination->subject_offering_id) {
+                    $enrollmentQuery->where('subject_offering_id', $examination->subject_offering_id);
+                } else {
+                    $enrollmentQuery->where('subject_id', $examination->subject_id);
+                }
+            });
+        }
+
+        if ($accessMode === ExaminationAccessMode::SubjectAndSections) {
+            $sectionIds = $examination->sections->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+            if ($sectionIds === []) {
+                return collect();
+            }
+
+            $query->where(function ($sectionQuery) use ($sectionIds, $examination) {
+                $sectionQuery
+                    ->whereIn('section_id', $sectionIds)
+                    ->orWhereHas('sections', function ($pivotQuery) use ($sectionIds, $examination) {
+                        $pivotQuery
+                            ->whereIn('sections.id', $sectionIds)
+                            ->where('student_sections.academic_year_id', $examination->academic_year_id)
+                            ->where('student_sections.semester_id', $examination->semester_id);
+                    });
+            });
+        }
+
+        return $query->orderBy('student_id')->get();
     }
 
     public function studentAssignedToExamination(Student $student, Examination $examination): bool

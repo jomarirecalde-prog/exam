@@ -22,6 +22,7 @@
                 'saveAnswer' => route('examinations.attempts.answers.store', ['examination' => $examination, 'question' => '__QUESTION__']),
                 'violations' => route('examinations.attempts.violations.store', $examination),
                 'submit' => route('examinations.attempts.submit', $examination),
+                'progress' => route('examinations.attempts.progress', $examination),
                 'prepareOffline' => route('examinations.attempts.prepare-offline', $examination),
                 'syncTemplate' => route('exam-attempts.sync', ['attempt' => '__ATTEMPT__']),
                 'submitOfflineTemplate' => route('exam-attempts.submit-offline', ['attempt' => '__ATTEMPT__']),

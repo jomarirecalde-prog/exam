@@ -112,6 +112,9 @@ class ExaminationAttemptService
                 'expires_at' => now()->addMinutes($durationMinutes),
                 'duration_seconds' => $durationMinutes * 60,
                 'ip_address' => request()->ip(),
+                'current_question_index' => 1,
+                'last_activity_at' => now(),
+                'connection_status' => 'online',
             ]);
 
             $this->ensureSnapshots($attempt, $examination);
@@ -147,6 +150,8 @@ class ExaminationAttemptService
             'is_flagged' => $isFlagged,
             'answered_at' => now(),
         ])->save();
+
+        $attempt->update(['last_activity_at' => now()]);
 
         return $record;
     }
@@ -193,6 +198,8 @@ class ExaminationAttemptService
             $attempt->update([
                 'status' => $auto ? AttemptStatus::AutoSubmitted : AttemptStatus::Submitted,
                 'submitted_at' => now(),
+                'last_activity_at' => now(),
+                'current_question_index' => null,
             ]);
 
             $this->grading->applyToAttempt($attempt->fresh());

@@ -6,6 +6,7 @@ use App\Enums\ReactivationWarningMode;
 use App\Models\Examination;
 use App\Models\ExaminationAttempt;
 use App\Services\Examinations\ExaminationMonitoringService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -18,19 +19,30 @@ class ExaminationMonitoringController extends Controller
         ExaminationMonitoringService $monitoring,
     ): JsonResponse {
         try {
-            $rows = $monitoring->attemptsForExamination($examination, $request->user());
+            $since = $request->query('since')
+                ? Carbon::parse((string) $request->query('since'))
+                : null;
+
+            $payload = $monitoring->dashboard($examination, $request->user(), $since);
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], str_contains(strtolower($e->getMessage()), 'authorized') ? 403 : 422);
         }
 
-        return response()->json([
-            'examination' => [
-                'id' => $examination->id,
-                'title' => $examination->title,
-                'subject' => $examination->subject?->code,
-            ],
-            'attempts' => $rows,
-        ]);
+        return response()->json($payload);
+    }
+
+    public function showAttempt(
+        Request $request,
+        ExaminationAttempt $attempt,
+        ExaminationMonitoringService $monitoring,
+    ): JsonResponse {
+        try {
+            $detail = $monitoring->attemptDetail($attempt, $request->user());
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], str_contains(strtolower($e->getMessage()), 'authorized') ? 403 : 422);
+        }
+
+        return response()->json(['student' => $detail]);
     }
 
     public function violations(
@@ -105,6 +117,7 @@ class ExaminationMonitoringController extends Controller
                 'warning_count' => (int) $attempt->warning_count,
                 'max_warnings' => $attempt->maxWarnings(),
                 'reactivated_at' => $attempt->reactivated_at?->toIso8601String(),
+                'reactivation_pending' => (bool) $attempt->reactivation_pending,
             ],
         ]);
     }

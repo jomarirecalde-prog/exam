@@ -7,6 +7,7 @@ use App\Models\Examination;
 use App\Models\ExaminationAttempt;
 use App\Services\Examinations\ExaminationAccessService;
 use App\Services\Examinations\ExaminationAttemptService;
+use App\Services\Examinations\ExamAttemptProgressService;
 use App\Services\Examinations\ExamViolationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -197,6 +198,41 @@ class ExaminationAttemptController extends Controller
             'violation_label' => $result['violation_label'] ?? $type->label(),
             'attempt' => $attempts->attemptState($attempt->fresh()),
         ]);
+    }
+
+    public function recordProgress(
+        Request $request,
+        Examination $examination,
+        ExaminationAccessService $access,
+        ExaminationAttemptService $attempts,
+        ExamAttemptProgressService $progress,
+    ): JsonResponse {
+        $attempt = $this->resolveWritableAttempt($request, $examination, $access, $attempts, allowLockedResponse: true);
+
+        if ($attempt instanceof JsonResponse) {
+            return $attempt;
+        }
+
+        $validated = $request->validate([
+            'current_question_index' => ['nullable', 'integer', 'min:1'],
+            'connection_status' => ['nullable', 'string', 'in:online,offline,reconnecting'],
+        ]);
+
+        try {
+            $progress->recordProgress(
+                $attempt,
+                isset($validated['current_question_index']) ? (int) $validated['current_question_index'] : null,
+                $validated['connection_status'] ?? 'online',
+            );
+
+            if ($attempt->reactivation_pending && $attempt->reactivated_at) {
+                $attempt->update(['reactivation_pending' => false]);
+            }
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Progress recorded.']);
     }
 
     public function submit(

@@ -117,6 +117,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/answers/{question}', [\App\Http\Controllers\ExaminationAttemptController::class, 'saveAnswer'])->name('answers.store');
         Route::post('/violations', [\App\Http\Controllers\ExaminationAttemptController::class, 'recordViolation'])->name('violations.store');
         Route::post('/submit', [\App\Http\Controllers\ExaminationAttemptController::class, 'submit'])->name('submit');
+        Route::post('/progress', [\App\Http\Controllers\ExaminationAttemptController::class, 'recordProgress'])->name('progress');
         Route::post('/prepare-offline', [\App\Http\Controllers\OfflineExamPreparationController::class, 'prepare'])->name('prepare-offline');
     });
 
@@ -138,6 +139,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::middleware('role:superadmin,admin,instructor')->prefix('monitoring')->name('monitoring.')->group(function () {
         Route::get('/examinations/{examination}/data', [\App\Http\Controllers\ExaminationMonitoringController::class, 'data'])->name('data');
+        Route::get('/attempts/{attempt}', [\App\Http\Controllers\ExaminationMonitoringController::class, 'showAttempt'])->name('attempts.show');
         Route::get('/attempts/{attempt}/violations', [\App\Http\Controllers\ExaminationMonitoringController::class, 'violations'])->name('violations');
         Route::post('/attempts/{attempt}/reactivate', [\App\Http\Controllers\ExaminationMonitoringController::class, 'reactivate'])->name('reactivate');
     });
@@ -152,7 +154,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
     Route::get('/results', [PlatformController::class, 'results'])->name('results.index');
     Route::get('/reports', [PlatformController::class, 'reports'])->name('reports.index');
-    Route::get('/monitoring', [PlatformController::class, 'monitoring'])->name('monitoring.index');
+    Route::get('/monitoring', [PlatformController::class, 'monitoring'])->middleware('role:superadmin,admin,instructor')->name('monitoring.index');
     Route::get('/synchronization', [PlatformController::class, 'sync'])->name('sync.index');
     Route::get('/audit-logs', [PlatformController::class, 'audit'])->name('audit.index');
     Route::get('/settings', [PlatformController::class, 'settings'])->name('settings.index');

@@ -93,7 +93,7 @@ class PlatformController extends Controller
         $user = auth()->user();
 
         $query = Examination::query()
-            ->with(['subject', 'sections'])
+            ->with(['subject', 'sections', 'subjectOffering.section'])
             ->whereIn('status', [ExamStatus::Active, ExamStatus::Published]);
 
         if ($user->hasRole('instructor') && $user->instructor) {
@@ -102,7 +102,15 @@ class PlatformController extends Controller
             $query->whereRaw('1 = 0');
         }
 
-        $active = $query->latest()->get();
+        $active = $query->latest()->get()->map(fn (Examination $exam) => [
+            'id' => $exam->id,
+            'title' => $exam->title,
+            'subject' => $exam->subject?->name ?? $exam->subject?->code,
+            'subject_code' => $exam->subject?->code,
+            'sections' => $exam->sections->pluck('name')->filter()->join(', ') ?: ($exam->subjectOffering?->section?->name ?? 'Unassigned'),
+            'is_live' => in_array($exam->status, [ExamStatus::Active, ExamStatus::Published], true),
+            'dataUrl' => route('monitoring.data', $exam),
+        ]);
 
         return view('pages.monitoring.index', compact('active'));
     }
