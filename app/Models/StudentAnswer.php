@@ -4,9 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class StudentAnswer extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (self $answer) {
+            if (empty($answer->uuid)) {
+                $answer->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
     protected $fillable = [
         'uuid', 'examination_attempt_id', 'question_id', 'answer', 'is_flagged',
         'is_correct', 'points_earned', 'requires_manual_grading', 'is_graded', 'answered_at',

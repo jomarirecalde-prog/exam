@@ -72,8 +72,12 @@ async function tx(storeName, mode, fn) {
     });
 }
 
+function cloneForStorage(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
 async function put(storeName, value) {
-    return tx(storeName, 'readwrite', (store) => store.put(value));
+    return tx(storeName, 'readwrite', (store) => store.put(cloneForStorage(value)));
 }
 
 async function get(storeName, key) {

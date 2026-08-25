@@ -7,6 +7,7 @@ use App\Enums\ViolationType;
 use App\Models\ExaminationAttempt;
 use App\Models\ExamViolation;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class ExamViolationService
@@ -69,7 +70,14 @@ class ExamViolationService
                 ];
             }
 
-            $this->attempts->saveAnswersBulk($attempt, $metadata['pending_answers'] ?? []);
+            try {
+                $this->attempts->saveAnswersBulk($attempt, $metadata['pending_answers'] ?? []);
+            } catch (InvalidArgumentException $exception) {
+                Log::warning('Could not persist pending answers while recording violation.', [
+                    'attempt_id' => $attempt->id,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
 
             $newWarningCount = min($attempt->maxWarnings(), (int) $attempt->warning_count + 1);
 
