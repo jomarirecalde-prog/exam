@@ -61,6 +61,17 @@ class QuestionCsvImporterTest extends TestCase
         $this->assertStringContainsString('essay', $template);
     }
 
+    public function test_imports_downloaded_template_with_utf8_bom(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'question-import-');
+        file_put_contents($path, $this->importer->template());
+
+        $result = $this->importer->import($path);
+
+        $this->assertSame(4, $result['imported']);
+        $this->assertSame([], $result['errors']);
+    }
+
     /**
      * @param  list<list<string>>  $rows
      */

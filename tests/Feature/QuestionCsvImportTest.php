@@ -141,4 +141,24 @@ class QuestionCsvImportTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('question,type,choice_a', $response->streamedContent());
     }
+
+    public function test_preview_accepts_downloaded_template_with_utf8_bom(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $user->assignRole(UserRole::Instructor->value);
+
+        $importer = app(\App\Services\Questions\QuestionCsvImporter::class);
+        $file = UploadedFile::fake()->createWithContent(
+            'question-import-template.csv',
+            $importer->template(),
+        );
+
+        $response = $this->actingAs($user)->postJson(route('examinations.preview-questions-csv'), [
+            'file' => $file,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('imported', 4)
+            ->assertJsonStructure(['token', 'stats', 'preview']);
+    }
 }

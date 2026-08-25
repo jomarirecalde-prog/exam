@@ -383,6 +383,10 @@ class QuestionCsvImporter
         $columns = [];
 
         foreach ($header as $index => $column) {
+            if ($index === 0) {
+                $column = $this->stripUtf8Bom((string) $column);
+            }
+
             $key = $this->normalizeKey((string) $column);
 
             if ($key !== '') {
@@ -391,6 +395,13 @@ class QuestionCsvImporter
         }
 
         return $columns;
+    }
+
+    protected function stripUtf8Bom(string $value): string
+    {
+        return str_starts_with($value, "\xEF\xBB\xBF")
+            ? substr($value, 3)
+            : $value;
     }
 
     protected function normalizeKey(string $column): string
