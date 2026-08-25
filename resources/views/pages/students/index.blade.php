@@ -1,5 +1,5 @@
 <x-app-layout>
-    <div class="ui-page">
+    <div class="ui-page" x-data>
         <x-ui.page-header title="Students" subtitle="Manage enrolled students and their academic placement." />
 
         <form method="get" action="{{ route('students.index') }}" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -35,6 +35,7 @@
                         </thead>
                         <tbody>
                             @foreach ($students as $student)
+                                @php($analysis = $deletionAnalyses[$student->id] ?? null)
                                 <tr>
                                     <td class="font-medium">
                                         <a href="{{ route('students.show', $student) }}" class="hover:underline" wire:navigate>
@@ -49,9 +50,25 @@
                                         <x-ui.badge :status="$student->is_active ? 'active' : 'closed'" />
                                     </td>
                                     <td>
-                                        <div class="flex justify-end gap-2">
+                                        <div class="flex justify-end gap-1">
                                             <a href="{{ route('students.show', $student) }}" class="btn-ghost btn-sm" wire:navigate>View</a>
                                             <a href="{{ route('students.edit', $student) }}" class="btn-ghost btn-sm" wire:navigate>Edit</a>
+                                            @if ($analysis)
+                                                <x-dropdown align="right" width="w-44">
+                                                    <x-slot name="trigger">
+                                                        <button type="button" class="btn-icon h-8 w-8" aria-label="More actions">
+                                                            <x-icon name="more-horizontal" :size="16" />
+                                                        </button>
+                                                    </x-slot>
+                                                    <x-slot name="content">
+                                                        <x-ui.delete-record-trigger
+                                                            :analysis="$analysis"
+                                                            :action="route('students.destroy', $student)"
+                                                            title="Delete Student?"
+                                                        />
+                                                    </x-slot>
+                                                </x-dropdown>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
@@ -64,5 +81,7 @@
                 </div>
             @endif
         </div>
+
+        <x-ui.delete-record-modal />
     </div>
 </x-app-layout>

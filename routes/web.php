@@ -30,7 +30,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::middleware('role:superadmin,admin')->group(function () {
-        Route::resource('students', \App\Http\Controllers\StudentController::class)->only(['index', 'show', 'edit', 'update']);
+        Route::resource('students', \App\Http\Controllers\StudentController::class)->only(['index', 'show', 'edit', 'update', 'destroy']);
+        Route::get('/students/deleted/list', [\App\Http\Controllers\StudentController::class, 'deletedIndex'])
+            ->name('students.deleted.index');
+        Route::post('/students/deleted/{studentId}/restore', [\App\Http\Controllers\StudentController::class, 'restore'])
+            ->name('students.restore');
+        Route::delete('/students/deleted/{studentId}/force', [\App\Http\Controllers\StudentController::class, 'forceDestroy'])
+            ->name('students.force-destroy');
         Route::get('/admin/student-registrations', [AdminStudentRegistrationController::class, 'index'])
             ->name('admin.student-registrations.index');
         Route::get('/admin/student-registrations/{student}', [AdminStudentRegistrationController::class, 'show'])

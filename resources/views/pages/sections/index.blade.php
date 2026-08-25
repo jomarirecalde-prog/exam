@@ -41,6 +41,7 @@
                         </thead>
                         <tbody>
                             @foreach ($sections as $section)
+                                @php($analysis = $deletionAnalyses[$section->id] ?? null)
                                 <tr>
                                     <td class="font-medium">
                                         <a href="{{ route('sections.show', $section) }}" class="hover:underline" wire:navigate>
@@ -66,13 +67,13 @@
                                                     </button>
                                                 </x-slot>
                                                 <x-slot name="content">
-                                                    <form method="post" action="{{ route('sections.destroy', $section) }}" onsubmit="return confirm('Deactivate this section? It will no longer be available for new examinations.')">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-danger-ink hover:bg-brand-soft">
-                                                            Deactivate
-                                                        </button>
-                                                    </form>
+                                                    @if ($analysis)
+                                                        <x-ui.delete-record-trigger
+                                                            :analysis="$analysis"
+                                                            :action="route('sections.destroy', $section)"
+                                                            title="Delete Section?"
+                                                        />
+                                                    @endif
                                                 </x-slot>
                                             </x-dropdown>
                                         </div>
@@ -87,5 +88,7 @@
                 </div>
             @endif
         </div>
+
+        <x-ui.delete-record-modal />
     </div>
 </x-app-layout>

@@ -33,6 +33,9 @@
                 @if (session('status'))
                     <div class="hidden" x-init="toast(@js(session('status')))"></div>
                 @endif
+                @if (session('error'))
+                    <div class="hidden" x-init="toast(@js(session('error')), 'error')"></div>
+                @endif
                 {{ $slot }}
             </main>
         </div>

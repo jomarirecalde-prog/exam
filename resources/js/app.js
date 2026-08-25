@@ -72,6 +72,54 @@ window.examShell = function examShell() {
     };
 };
 
+window.deleteRecordModal = function deleteRecordModal() {
+    return {
+        open: false,
+        submitting: false,
+        title: 'Delete Record?',
+        recordName: '',
+        recordDetail: '',
+        warning: '',
+        blocked: false,
+        blockedMessage: '',
+        blockers: [],
+        action: '',
+        confirmLabel: 'Delete',
+        method: 'DELETE',
+        openModal(detail = {}) {
+            this.title = detail.title || 'Delete Record?';
+            this.recordName = detail.recordName || '';
+            this.recordDetail = detail.recordDetail || '';
+            this.warning = detail.warning || '';
+            this.blocked = Boolean(detail.blocked);
+            this.blockedMessage = detail.blockedMessage || '';
+            this.blockers = Array.isArray(detail.blockers) ? detail.blockers : [];
+            this.action = detail.action || '';
+            this.confirmLabel = detail.confirmLabel || 'Delete';
+            this.method = detail.method || 'DELETE';
+            this.submitting = false;
+            this.open = true;
+        },
+        closeModal() {
+            if (this.submitting) {
+                return;
+            }
+            this.open = false;
+        },
+        handleSubmit(event) {
+            if (this.blocked) {
+                event.preventDefault();
+                return;
+            }
+            if (this.submitting) {
+                event.preventDefault();
+                return;
+            }
+            this.submitting = true;
+        },
+    };
+};
+
 window.csvImportPanel = function csvImportPanel(config = {}) {
     return {
         templateUrl: config.templateUrl || '',

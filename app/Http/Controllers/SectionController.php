@@ -9,12 +9,20 @@ use App\Models\Program;
 use App\Models\Section;
 use App\Models\Semester;
 use App\Models\YearLevel;
+use App\Services\Academic\SectionDeletionService;
+use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SectionController extends Controller
 {
+    public function __construct(
+        protected SectionDeletionService $deletion,
+        protected AuditLogger $auditLogger,
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('q'));
@@ -35,7 +43,10 @@ class SectionController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('pages.sections.index', compact('sections', 'search'));
+        $deletionAnalyses = $sections->getCollection()
+            ->mapWithKeys(fn (Section $section) => [$section->id => $this->deletion->analyze($section)]);
+
+        return view('pages.sections.index', compact('sections', 'search', 'deletionAnalyses'));
     }
 
     public function create(): View
@@ -76,13 +87,51 @@ class SectionController extends Controller
             ->with('status', 'Section updated successfully.');
     }
 
-    public function destroy(Section $section): RedirectResponse
+    public function destroy(Request $request, Section $section): RedirectResponse
     {
-        $section->update(['is_active' => false]);
+        $this->authorize('delete', $section);
+
+        $analysis = $this->deletion->analyze($section);
+
+        if (! $this->deletion->delete($section)) {
+            $this->auditLogger->log(
+                $request->user(),
+                'delete_blocked',
+                'sections',
+                Section::class,
+                $section->id,
+                [
+                    'name' => $section->displayName(),
+                    'code' => $section->code,
+                    'role' => $request->user()?->getRoleNames()->first(),
+                    'succeeded' => false,
+                    'reason' => $analysis->blockedMessage(),
+                    'blockers' => $analysis->blockers,
+                ],
+            );
+
+            return redirect()
+                ->route('sections.index')
+                ->with('error', $analysis->blockedMessage());
+        }
+
+        $this->auditLogger->log(
+            $request->user(),
+            'delete',
+            'sections',
+            Section::class,
+            $section->id,
+            [
+                'name' => $section->displayName(),
+                'code' => $section->code,
+                'role' => $request->user()?->getRoleNames()->first(),
+                'succeeded' => true,
+            ],
+        );
 
         return redirect()
             ->route('sections.index')
-            ->with('status', 'Section deactivated.');
+            ->with('status', 'Section deleted successfully.');
     }
 
     protected function formOptions(): array

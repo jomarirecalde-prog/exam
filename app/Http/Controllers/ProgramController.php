@@ -6,6 +6,8 @@ use App\Http\Requests\StoreProgramRequest;
 use App\Http\Requests\UpdateProgramRequest;
 use App\Models\Department;
 use App\Models\Program;
+use App\Services\Academic\ProgramDeletionService;
+use App\Services\AuditLogger;
 use App\Support\YearLevelDefaults;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +15,12 @@ use Illuminate\View\View;
 
 class ProgramController extends Controller
 {
+    public function __construct(
+        protected ProgramDeletionService $deletion,
+        protected AuditLogger $auditLogger,
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('q'));
@@ -33,7 +41,10 @@ class ProgramController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('pages.programs.index', compact('programs', 'search'));
+        $deletionAnalyses = $programs->getCollection()
+            ->mapWithKeys(fn (Program $program) => [$program->id => $this->deletion->analyze($program)]);
+
+        return view('pages.programs.index', compact('programs', 'search', 'deletionAnalyses'));
     }
 
     public function create(): View
@@ -75,13 +86,51 @@ class ProgramController extends Controller
             ->with('status', 'Program updated successfully.');
     }
 
-    public function destroy(Program $program): RedirectResponse
+    public function destroy(Request $request, Program $program): RedirectResponse
     {
-        $program->update(['is_active' => false]);
+        $this->authorize('delete', $program);
+
+        $analysis = $this->deletion->analyze($program);
+
+        if (! $this->deletion->delete($program)) {
+            $this->auditLogger->log(
+                $request->user(),
+                'delete_blocked',
+                'programs',
+                Program::class,
+                $program->id,
+                [
+                    'name' => $program->name,
+                    'code' => $program->code,
+                    'role' => $request->user()?->getRoleNames()->first(),
+                    'succeeded' => false,
+                    'reason' => $analysis->blockedMessage(),
+                    'blockers' => $analysis->blockers,
+                ],
+            );
+
+            return redirect()
+                ->route('programs.index')
+                ->with('error', $analysis->blockedMessage());
+        }
+
+        $this->auditLogger->log(
+            $request->user(),
+            'delete',
+            'programs',
+            Program::class,
+            $program->id,
+            [
+                'name' => $program->name,
+                'code' => $program->code,
+                'role' => $request->user()?->getRoleNames()->first(),
+                'succeeded' => true,
+            ],
+        );
 
         return redirect()
             ->route('programs.index')
-            ->with('status', 'Program deactivated.');
+            ->with('status', 'Program deleted successfully.');
     }
 
     protected function formOptions(): array

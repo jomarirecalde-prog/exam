@@ -41,6 +41,7 @@
                         </thead>
                         <tbody>
                             @foreach ($departments as $department)
+                                @php($analysis = $deletionAnalyses[$department->id] ?? null)
                                 <tr>
                                     <td class="font-medium">{{ $department->code }}</td>
                                     <td>
@@ -56,22 +57,22 @@
                                         <div class="flex justify-end gap-1">
                                             <a href="{{ route('departments.show', $department) }}" class="btn-ghost btn-sm" wire:navigate>View</a>
                                             <a href="{{ route('departments.edit', $department) }}" class="btn-ghost btn-sm" wire:navigate>Edit</a>
-                                            <x-dropdown align="right" width="w-44">
-                                                <x-slot name="trigger">
-                                                    <button type="button" class="btn-icon h-8 w-8" aria-label="More actions">
-                                                        <x-icon name="more-horizontal" :size="16" />
-                                                    </button>
-                                                </x-slot>
-                                                <x-slot name="content">
-                                                    <form method="post" action="{{ route('departments.destroy', $department) }}" onsubmit="return confirm('Deactivate this department?')">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-danger-ink hover:bg-brand-soft">
-                                                            Deactivate
+                                            @if ($analysis)
+                                                <x-dropdown align="right" width="w-44">
+                                                    <x-slot name="trigger">
+                                                        <button type="button" class="btn-icon h-8 w-8" aria-label="More actions">
+                                                            <x-icon name="more-horizontal" :size="16" />
                                                         </button>
-                                                    </form>
-                                                </x-slot>
-                                            </x-dropdown>
+                                                    </x-slot>
+                                                    <x-slot name="content">
+                                                        <x-ui.delete-record-trigger
+                                                            :analysis="$analysis"
+                                                            :action="route('departments.destroy', $department)"
+                                                            title="Delete Department?"
+                                                        />
+                                                    </x-slot>
+                                                </x-dropdown>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
@@ -84,5 +85,7 @@
                 </div>
             @endif
         </div>
+
+        <x-ui.delete-record-modal />
     </div>
 </x-app-layout>

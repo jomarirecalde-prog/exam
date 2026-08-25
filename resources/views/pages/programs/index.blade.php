@@ -41,6 +41,7 @@
                         </thead>
                         <tbody>
                             @foreach ($programs as $program)
+                                @php($analysis = $deletionAnalyses[$program->id] ?? null)
                                 <tr>
                                     <td class="font-medium">{{ $program->code }}</td>
                                     <td>
@@ -63,13 +64,13 @@
                                                     </button>
                                                 </x-slot>
                                                 <x-slot name="content">
-                                                    <form method="post" action="{{ route('programs.destroy', $program) }}" onsubmit="return confirm('Deactivate this program? It will no longer be available for new sections.')">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-danger-ink hover:bg-brand-soft">
-                                                            Deactivate
-                                                        </button>
-                                                    </form>
+                                                    @if ($analysis)
+                                                        <x-ui.delete-record-trigger
+                                                            :analysis="$analysis"
+                                                            :action="route('programs.destroy', $program)"
+                                                            title="Delete Program?"
+                                                        />
+                                                    @endif
                                                 </x-slot>
                                             </x-dropdown>
                                         </div>
@@ -84,5 +85,7 @@
                 </div>
             @endif
         </div>
+
+        <x-ui.delete-record-modal />
     </div>
 </x-app-layout>

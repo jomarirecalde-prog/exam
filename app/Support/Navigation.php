@@ -44,6 +44,7 @@ class Navigation
             'dashboard' => [['Dashboard']],
             'profile' => [['Dashboard', 'dashboard'], ['Profile']],
             'students.index' => [['Academic'], ['Students']],
+            'students.deleted.index' => [['Academic'], ['Students', 'students.index'], ['Deleted']],
             'students.show' => [['Academic'], ['Students', 'students.index'], ['Profile']],
             'students.edit' => [['Academic'], ['Students', 'students.index'], ['Edit']],
             'admin.student-registrations.index' => [['Academic'], ['Student Registrations']],
@@ -124,18 +125,28 @@ class Navigation
         }
 
         if ($user->hasAnyRole(['superadmin', 'admin'])) {
+            $academicItems = [
+                ['label' => 'Students', 'route' => 'students.index', 'icon' => 'graduation-cap'],
+                ['label' => 'Student Registrations', 'route' => 'admin.student-registrations.index', 'icon' => 'user-plus'],
+                ['label' => 'Subject Change Requests', 'route' => 'admin.student-subject-requests.index', 'icon' => 'file-edit'],
+                ['label' => 'Instructors', 'route' => 'instructors.index', 'icon' => 'users'],
+                ['label' => 'Departments', 'route' => 'departments.index', 'icon' => 'building-2'],
+                ['label' => 'Programs', 'route' => 'programs.index', 'icon' => 'library'],
+                ['label' => 'Sections', 'route' => 'sections.index', 'icon' => 'layers'],
+                ['label' => 'Subjects', 'route' => 'subjects.index', 'icon' => 'book-open'],
+            ];
+
+            if ($user->hasRole('superadmin')) {
+                array_splice($academicItems, 1, 0, [[
+                    'label' => 'Deleted Students',
+                    'route' => 'students.deleted.index',
+                    'icon' => 'archive',
+                ]]);
+            }
+
             $groups[] = [
                 'label' => 'Academic',
-                'items' => [
-                    ['label' => 'Students', 'route' => 'students.index', 'icon' => 'graduation-cap'],
-                    ['label' => 'Student Registrations', 'route' => 'admin.student-registrations.index', 'icon' => 'user-plus'],
-                    ['label' => 'Subject Change Requests', 'route' => 'admin.student-subject-requests.index', 'icon' => 'file-edit'],
-                    ['label' => 'Instructors', 'route' => 'instructors.index', 'icon' => 'users'],
-                    ['label' => 'Departments', 'route' => 'departments.index', 'icon' => 'building-2'],
-                    ['label' => 'Programs', 'route' => 'programs.index', 'icon' => 'library'],
-                    ['label' => 'Sections', 'route' => 'sections.index', 'icon' => 'layers'],
-                    ['label' => 'Subjects', 'route' => 'subjects.index', 'icon' => 'book-open'],
-                ],
+                'items' => $academicItems,
             ];
         }
 

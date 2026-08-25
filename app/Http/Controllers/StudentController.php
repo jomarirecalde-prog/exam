@@ -6,6 +6,7 @@ use App\Enums\StudentRegistrationStatus;
 use App\Enums\UserRole;
 use App\Http\Requests\UpdateStudentRequest;
 use App\Models\Student;
+use App\Services\Academic\StudentDeletionService;
 use App\Services\Students\AcademicLookupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class StudentController extends Controller
 {
     public function __construct(
         protected AcademicLookupService $lookup,
+        protected StudentDeletionService $deletion,
     ) {
     }
 
@@ -43,7 +45,37 @@ class StudentController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('pages.students.index', compact('students', 'search'));
+        $deletionAnalyses = $students->getCollection()
+            ->mapWithKeys(fn (Student $student) => [$student->id => $this->deletion->analyze($student)]);
+
+        return view('pages.students.index', compact('students', 'search', 'deletionAnalyses'));
+    }
+
+    public function deletedIndex(Request $request): View
+    {
+        abort_unless($request->user()?->hasRole(UserRole::Superadmin->value), 403);
+
+        $search = trim((string) $request->query('q'));
+
+        $students = Student::query()
+            ->onlyTrashed()
+            ->with(['user', 'program', 'section', 'deletedBy'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('student_id', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($query) use ($search) {
+                            $query->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%")
+                                ->orWhere('first_name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->latest('deleted_at')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('pages.students.deleted', compact('students', 'search'));
     }
 
     public function show(Student $student): View
@@ -126,5 +158,48 @@ class StudentController extends Controller
         return redirect()
             ->route('students.show', $student)
             ->with('status', 'Student updated successfully.');
+    }
+
+    public function destroy(Request $request, Student $student): RedirectResponse
+    {
+        $this->authorize('delete', $student);
+
+        abort_unless($student->registration_status === StudentRegistrationStatus::Approved, 404);
+
+        $this->deletion->delete($request->user(), $student);
+
+        return redirect()
+            ->route('students.index')
+            ->with('status', 'Student deleted successfully.');
+    }
+
+    public function restore(Request $request, int $studentId): RedirectResponse
+    {
+        $student = Student::query()->onlyTrashed()->findOrFail($studentId);
+
+        $this->authorize('restore', $student);
+
+        $this->deletion->restore($request->user(), $student);
+
+        return redirect()
+            ->route('students.deleted.index')
+            ->with('status', 'Student restored successfully.');
+    }
+
+    public function forceDestroy(Request $request, int $studentId): RedirectResponse
+    {
+        $student = Student::query()->onlyTrashed()->with('user')->findOrFail($studentId);
+
+        $this->authorize('forceDelete', $student);
+
+        if (! $this->deletion->forceDelete($request->user(), $student)) {
+            return redirect()
+                ->route('students.deleted.index')
+                ->with('error', 'Cannot permanently delete this student because examination history must be preserved.');
+        }
+
+        return redirect()
+            ->route('students.deleted.index')
+            ->with('status', 'Student permanently deleted.');
     }
 }

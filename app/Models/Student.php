@@ -7,10 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
 class Student extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'user_id',
         'student_id',
@@ -27,6 +30,7 @@ class Student extends Model
         'approved_at',
         'approved_by',
         'rejection_reason',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -63,6 +67,16 @@ class Student extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function deletedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'deleted_by');
+    }
+
+    public function displayName(): string
+    {
+        return $this->user?->fullName() ?: $this->user?->name ?: $this->student_id;
     }
 
     public function sections(): BelongsToMany

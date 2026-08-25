@@ -2,8 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Department;
 use App\Models\Examination;
+use App\Models\Program;
+use App\Models\Section;
+use App\Models\Student;
+use App\Policies\DepartmentPolicy;
 use App\Policies\ExaminationPolicy;
+use App\Policies\ProgramPolicy;
+use App\Policies\SectionPolicy;
+use App\Policies\StudentPolicy;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Examination::class, ExaminationPolicy::class);
+        Gate::policy(Student::class, StudentPolicy::class);
+        Gate::policy(Department::class, DepartmentPolicy::class);
+        Gate::policy(Program::class, ProgramPolicy::class);
+        Gate::policy(Section::class, SectionPolicy::class);
 
         $this->configureForVercel();
 

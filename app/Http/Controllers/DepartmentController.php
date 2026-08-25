@@ -5,12 +5,20 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreDepartmentRequest;
 use App\Http\Requests\UpdateDepartmentRequest;
 use App\Models\Department;
+use App\Services\Academic\DepartmentDeletionService;
+use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class DepartmentController extends Controller
 {
+    public function __construct(
+        protected DepartmentDeletionService $deletion,
+        protected AuditLogger $auditLogger,
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('q'));
@@ -27,7 +35,10 @@ class DepartmentController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('pages.departments.index', compact('departments', 'search'));
+        $deletionAnalyses = $departments->getCollection()
+            ->mapWithKeys(fn (Department $department) => [$department->id => $this->deletion->analyze($department)]);
+
+        return view('pages.departments.index', compact('departments', 'search', 'deletionAnalyses'));
     }
 
     public function create(): View
@@ -65,12 +76,50 @@ class DepartmentController extends Controller
             ->with('status', 'Department updated successfully.');
     }
 
-    public function destroy(Department $department): RedirectResponse
+    public function destroy(Request $request, Department $department): RedirectResponse
     {
-        $department->update(['is_active' => false]);
+        $this->authorize('delete', $department);
+
+        $analysis = $this->deletion->analyze($department);
+
+        if (! $this->deletion->delete($department)) {
+            $this->auditLogger->log(
+                $request->user(),
+                'delete_blocked',
+                'departments',
+                Department::class,
+                $department->id,
+                [
+                    'name' => $department->name,
+                    'code' => $department->code,
+                    'role' => $request->user()?->getRoleNames()->first(),
+                    'succeeded' => false,
+                    'reason' => $analysis->blockedMessage(),
+                    'blockers' => $analysis->blockers,
+                ],
+            );
+
+            return redirect()
+                ->route('departments.index')
+                ->with('error', $analysis->blockedMessage());
+        }
+
+        $this->auditLogger->log(
+            $request->user(),
+            'delete',
+            'departments',
+            Department::class,
+            $department->id,
+            [
+                'name' => $department->name,
+                'code' => $department->code,
+                'role' => $request->user()?->getRoleNames()->first(),
+                'succeeded' => true,
+            ],
+        );
 
         return redirect()
             ->route('departments.index')
-            ->with('status', 'Department deactivated.');
+            ->with('status', 'Department deleted successfully.');
     }
 }
