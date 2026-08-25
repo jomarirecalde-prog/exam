@@ -81,6 +81,7 @@ class Navigation
             'examinations.edit' => [['Examinations', 'examinations.index'], ['Edit Examination']],
             'questions.index' => [['Examinations'], ['Question Bank']],
             'results.index' => [['Results'], ['Examination Results']],
+            'results.show' => [['Results', 'results.index'], ['Examination Results']],
             'reports.index' => [['Results'], ['Reports']],
             'monitoring.index' => [['Monitoring']],
             'monitoring.show' => [['Monitoring', 'monitoring.index'], ['Monitor Examination']],

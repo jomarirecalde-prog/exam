@@ -157,6 +157,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/question-bank/error-report', [\App\Http\Controllers\QuestionController::class, 'errorReport'])->name('questions.error-report');
     });
     Route::get('/results', [PlatformController::class, 'results'])->name('results.index');
+    Route::get('/results/examinations/{examination}', [PlatformController::class, 'resultsShow'])->name('results.show');
     Route::get('/reports', [PlatformController::class, 'reports'])->name('reports.index');
     Route::get('/monitoring', [PlatformController::class, 'monitoring'])->middleware('role:superadmin,admin,instructor')->name('monitoring.index');
     Route::get('/synchronization', [PlatformController::class, 'sync'])->name('sync.index');

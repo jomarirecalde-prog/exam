@@ -51,9 +51,35 @@ class ExaminationMonitoringTest extends TestCase
             ->assertOk()
             ->assertSee('Examination Monitoring')
             ->assertSee('Policy Monitoring Exam')
-            ->assertSee('My Active Examinations')
+            ->assertSee('Live Examinations')
             ->assertSee('Monitor Examination')
             ->assertDontSee('Select an examination to monitor');
+    }
+
+    public function test_instructor_sees_ended_examination_on_monitoring_page(): void
+    {
+        $data = $this->monitoringScenario();
+        $data['examination']->update(['status' => ExamStatus::Ended, 'ended_at' => now()]);
+
+        $this->actingAs($data['instructorUser'])
+            ->get(route('monitoring.index'))
+            ->assertOk()
+            ->assertSee('Ended Examinations')
+            ->assertSee('Policy Monitoring Exam')
+            ->assertSee('Open Monitoring')
+            ->assertDontSee('Live Examinations');
+    }
+
+    public function test_instructor_can_enter_ended_examination_monitoring_page(): void
+    {
+        $data = $this->monitoringScenario();
+        $data['examination']->update(['status' => ExamStatus::Ended, 'ended_at' => now()]);
+
+        $this->actingAs($data['instructorUser'])
+            ->get(route('monitoring.show', $data['examination']))
+            ->assertOk()
+            ->assertSee('Policy Monitoring Exam')
+            ->assertSee('Back to Examinations');
     }
 
     public function test_instructor_can_enter_examination_monitoring_page(): void

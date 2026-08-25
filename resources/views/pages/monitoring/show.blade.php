@@ -29,9 +29,9 @@
         <p class="mb-6 text-sm text-muted">
             Section: {{ $sections }}
             ·
-            <span class="inline-flex items-center gap-1.5 font-medium text-success-ink">
-                <span class="h-2 w-2 animate-pulse rounded-full bg-success-ink"></span>
-                Monitoring live
+            <span class="inline-flex items-center gap-1.5 font-medium" :class="examination?.is_live ? 'text-success-ink' : 'text-muted'">
+                <span class="h-2 w-2 rounded-full" :class="examination?.is_live ? 'bg-success-ink animate-pulse' : 'bg-muted'"></span>
+                <span x-text="examination?.is_live ? 'Monitoring live' : (examination?.status_label || 'Examination ended')"></span>
             </span>
         </p>
 

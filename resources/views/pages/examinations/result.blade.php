@@ -8,26 +8,46 @@
             $pendingGrading = $grade?->status === \App\Enums\ResultStatus::PendingGrading;
             $summary = $breakdown['summary'] ?? null;
             $formatPoints = fn (?float $value) => $value === null ? '—' : rtrim(rtrim(number_format($value, 2), '0'), '.');
+            $studentName = $viewingStudent?->user?->fullName() ?: $viewingStudent?->user?->name;
         @endphp
+
+        @if ($viewingAsStaff ?? false)
+            <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <a href="{{ route('results.show', $examination) }}" class="btn-secondary">Back to Results</a>
+            </div>
+        @endif
 
         <p class="ui-kicker">{{ $examination->subject?->code }}</p>
         <h1 class="mt-2 ui-title">{{ $examination->title }}</h1>
 
+        @if ($viewingAsStaff && $studentName)
+            <p class="mt-2 text-sm text-muted">
+                Student: <span class="font-medium text-ink">{{ $studentName }}</span>
+                @if ($viewingStudent?->student_id)
+                    · {{ $viewingStudent->student_id }}
+                @endif
+            </p>
+        @endif
+
         @if (! $grade)
             <x-ui.card class="mt-8">
                 <x-ui.empty-state title="Results are not available yet." icon="bar-chart-3">
-                    Complete and submit the examination to view your score.
+                    @if ($viewingAsStaff ?? false)
+                        This student has not received a grade for this examination yet.
+                    @else
+                        Complete and submit the examination to view your score.
+                    @endif
                 </x-ui.empty-state>
             </x-ui.card>
         @else
-            @if ($pendingGrading)
+            @if ($pendingGrading && ! ($viewingAsStaff ?? false))
                 <x-ui.alert type="warning" class="mt-8">
                     Examination submitted. Some answers require manual grading. Your score below reflects auto-graded questions; essay scores will appear once your instructor finishes grading.
                 </x-ui.alert>
             @endif
 
             <section class="mt-10">
-                <p class="text-sm text-muted">Your Score</p>
+                <p class="text-sm text-muted">{{ ($viewingAsStaff ?? false) ? 'Score' : 'Your Score' }}</p>
                 <p class="mt-2 text-4xl font-semibold tracking-tight">
                     {{ $formatPoints($score !== null ? (float) $score : null) }} / {{ $formatPoints($total !== null ? (float) $total : null) }}
                 </p>
