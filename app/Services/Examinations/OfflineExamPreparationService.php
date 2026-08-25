@@ -121,17 +121,9 @@ class OfflineExamPreparationService
                 return null;
             }
 
-            return [
-                'id' => $question->id,
-                'text' => $question->question_text,
-                'type' => $question->type->value ?? (string) $question->type,
-                'points' => $item->points_override ?? $question->points,
-                'choices' => $question->choices->map(fn ($choice) => [
-                    'id' => strtoupper((string) $choice->label),
-                    'text' => $choice->choice_text,
-                ])->all(),
-                'media_urls' => [],
-            ];
+            return $question->toExamPayload(
+                $item->points_override !== null ? (float) $item->points_override : null
+            );
         })->filter()->values()->all();
 
         $durationMinutes = max(1, (int) ($examination->duration_minutes ?: config('examination.default_duration_minutes', 60)));

@@ -21,7 +21,41 @@
                     </x-ui.empty-state>
                 </div>
             @else
-                <div class="overflow-x-auto">
+                <div class="divide-y divide-line md:hidden">
+                    @foreach ($grades as $grade)
+                        <article class="px-4 py-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="font-medium">{{ $grade->examination?->title }}</p>
+                                    @unless ($isStudent)
+                                        <p class="mt-1 text-sm text-muted">{{ $grade->student?->user?->fullName() ?: $grade->student?->user?->name }}</p>
+                                    @endunless
+                                    @if ($isStudent)
+                                        <p class="mt-1 text-sm text-muted">{{ $grade->examination?->subject?->code }}</p>
+                                    @endif
+                                </div>
+                                <x-ui.badge :status="$grade->passed ? 'passed' : 'failed'" />
+                            </div>
+                            <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                <div>
+                                    <dt class="text-muted">Score</dt>
+                                    <dd class="mt-0.5 font-medium">{{ rtrim(rtrim(number_format($grade->percentage, 1), '0'), '.') }}%</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted">Date</dt>
+                                    <dd class="mt-0.5">{{ optional($grade->released_at ?: $grade->created_at)->format('M j, Y') }}</dd>
+                                </div>
+                            </dl>
+                            @if ($grade->examination_id)
+                                <div class="mt-3">
+                                    <a href="{{ route('examinations.result', $grade->examination_id) }}" class="btn-ghost btn-sm">View</a>
+                                </div>
+                            @endif
+                        </article>
+                    @endforeach
+                </div>
+
+                <div class="hidden overflow-x-auto md:block">
                     <table class="ui-table">
                         <thead>
                             <tr>

@@ -1361,13 +1361,13 @@ window.examTaking = function examTaking(config) {
                 return 'Saving...';
             }
             if (this.saveStatus === 'saved' && this.networkOnline && this.pendingSyncCount === 0) {
-                return 'Saved and synchronized';
+                return '✓ Saved';
             }
             if (this.saveStatus === 'saved' || this.saveStatus === 'local') {
-                return this.networkOnline ? 'Saved on this device' : 'Saved on this device';
+                return this.networkOnline && this.pendingSyncCount === 0 ? '✓ Saved' : '⏳ Pending Sync';
             }
             if (this.pendingSyncCount > 0) {
-                return 'Waiting to sync';
+                return '⏳ Pending Sync';
             }
             return '';
         },
@@ -1472,13 +1472,51 @@ window.examTaking = function examTaking(config) {
         },
 
         get answeredCount() {
-            return Object.keys(this.answers).filter((key) => this.answers[key]).length;
+            return this.questions.filter((_, index) => this.isAnswered(index + 1)).length;
         },
 
         get unanswered() {
             return this.questions
                 .map((question, index) => ({ ...question, number: index + 1 }))
-                .filter((question) => !this.answers[question.number]);
+                .filter((question) => !this.isAnswered(question.number));
+        },
+
+        questionType(question) {
+            return question?.type || 'multiple_choice';
+        },
+
+        isSupportedQuestionType(question) {
+            return ['multiple_choice', 'true_false', 'essay', 'short_answer', 'identification'].includes(this.questionType(question));
+        },
+
+        isAnswered(questionNumber) {
+            const answer = this.answers[questionNumber];
+            const question = this.questions[questionNumber - 1];
+            if (!question) {
+                return false;
+            }
+
+            const type = this.questionType(question);
+            if (type === 'essay' || type === 'short_answer' || type === 'identification') {
+                return typeof answer === 'string' && answer.trim() !== '';
+            }
+
+            return answer != null && answer !== '';
+        },
+
+        wordCount(value) {
+            if (typeof value !== 'string' || value.trim() === '') {
+                return 0;
+            }
+
+            return value.trim().split(/\s+/).length;
+        },
+
+        flushSave() {
+            clearTimeout(this.saveTimer);
+            if (this.phase === 'active') {
+                void this.persistAnswers();
+            }
         },
 
         hydrateFromAttempt(attempt) {
@@ -1918,13 +1956,13 @@ window.examTaking = function examTaking(config) {
             this.pendingSyncCount = (await getQueueSummary()).pendingCount;
         },
 
-        scheduleSave() {
+        scheduleSave(isText = false) {
             if (this.phase !== 'active') {
                 return;
             }
             this.saveStatus = 'saving';
             clearTimeout(this.saveTimer);
-            this.saveTimer = setTimeout(() => this.persistAnswers(), 500);
+            this.saveTimer = setTimeout(() => this.persistAnswers(), isText ? 750 : 500);
         },
 
         async persistAnswers() {
@@ -1955,21 +1993,29 @@ window.examTaking = function examTaking(config) {
             this.scheduleSave();
         },
 
+        setTextAnswer(value) {
+            this.answers[this.current] = value;
+            this.scheduleSave(true);
+        },
+
         flag() {
             this.flagged[this.current] = !this.flagged[this.current];
             this.scheduleSave();
         },
 
         go(number) {
+            this.flushSave();
             this.current = number;
             this.navigatorOpen = false;
         },
 
         prev() {
+            this.flushSave();
             this.current = Math.max(1, this.current - 1);
         },
 
         next() {
+            this.flushSave();
             this.current = Math.min(this.total, this.current + 1);
         },
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ExamStatus;
+use App\Enums\QuestionType;
 use App\Models\Examination;
 use App\Models\Grade;
 use App\Models\Program;
@@ -222,26 +223,7 @@ class PlatformController extends Controller
             return null;
         }
 
-        $choices = $question->choices->map(fn ($choice) => [
-            'id' => strtoupper((string) $choice->label),
-            'text' => $choice->choice_text,
-        ])->all();
-
-        if ($choices === []) {
-            $choices = [
-                ['id' => 'A', 'text' => 'Option A'],
-                ['id' => 'B', 'text' => 'Option B'],
-                ['id' => 'C', 'text' => 'Option C'],
-                ['id' => 'D', 'text' => 'Option D'],
-            ];
-        }
-
-        return [
-            'id' => $question->id,
-            'text' => $question->question_text,
-            'choices' => $choices,
-            'points' => $points ?? $question->points,
-        ];
+        return $question->toExamPayload($points !== null ? (float) $points : null);
     }
 
     protected function sampleQuestions(): array
@@ -249,6 +231,7 @@ class PlatformController extends Controller
         return [
             [
                 'id' => 1,
+                'type' => QuestionType::MultipleChoice->value,
                 'text' => 'Which of the following best describes an information system?',
                 'choices' => [
                     ['id' => 'A', 'text' => 'A collection of hardware only'],
@@ -256,14 +239,17 @@ class PlatformController extends Controller
                     ['id' => 'C', 'text' => 'A programming language'],
                     ['id' => 'D', 'text' => 'A network protocol'],
                 ],
+                'points' => 1,
             ],
             [
                 'id' => 2,
+                'type' => QuestionType::TrueFalse->value,
                 'text' => 'An information system includes people, processes, and technology.',
                 'choices' => [
-                    ['id' => 'A', 'text' => 'True'],
-                    ['id' => 'B', 'text' => 'False'],
+                    ['id' => 'true', 'text' => 'True'],
+                    ['id' => 'false', 'text' => 'False'],
                 ],
+                'points' => 1,
             ],
         ];
     }

@@ -23,6 +23,16 @@ class StudentResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?AcademicYear $gradeYear = null;
+
+    private ?Semester $gradeSemester = null;
+
+    private ?Subject $gradeSubject = null;
+
+    private ?Section $gradeSection = null;
+
+    private ?Instructor $gradeInstructor = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -54,44 +64,56 @@ class StudentResultsTest extends TestCase
         $response->assertViewHas('grades', fn ($grades) => $grades->count() === 2);
     }
 
+    public function test_student_can_view_examination_result_detail_page(): void
+    {
+        $studentUser = User::factory()->create(['email_verified_at' => now()]);
+        $studentUser->assignRole('student');
+        $student = Student::create([
+            'user_id' => $studentUser->id,
+            'student_id' => 'STU-9001',
+        ]);
+
+        $grade = $this->createGradeForStudent($student, suffix: 'detail');
+
+        $response = $this->actingAs($studentUser)->get(route('examinations.result', $grade->examination_id));
+
+        $response->assertOk();
+        $response->assertSee('Test Exam detail');
+        $response->assertSee('80%');
+    }
+
     protected function createGradeForStudent(Student $student, string $suffix): Grade
     {
-        static $year;
-        static $semester;
-        static $subject;
-        static $section;
-        static $instructor;
+        $this->gradeYear ??= AcademicYear::create(['name' => '2026-2027', 'is_current' => true]);
+        $this->gradeSemester ??= Semester::create(['academic_year_id' => $this->gradeYear->id, 'name' => '1st Semester']);
+        $this->gradeSubject ??= Subject::create(['code' => 'IS101', 'name' => 'IS 101']);
 
-        $year ??= AcademicYear::create(['name' => '2026-2027', 'is_current' => true]);
-        $semester ??= Semester::create(['academic_year_id' => $year->id, 'name' => '1st Semester']);
-        $subject ??= Subject::create(['code' => 'IS101', 'name' => 'IS 101']);
-
-        if (! isset($section)) {
+        if ($this->gradeSection === null) {
             $department = \App\Models\Department::create(['code' => 'CCIS', 'name' => 'CCIS']);
             $program = \App\Models\Program::create(['department_id' => $department->id, 'code' => 'BSIS', 'name' => 'BSIS']);
             $yearLevel = \App\Models\YearLevel::create(['program_id' => $program->id, 'name' => '1st Year', 'level' => 1]);
 
-            $section = Section::create([
+            $this->gradeSection = Section::create([
                 'program_id' => $program->id,
                 'year_level_id' => $yearLevel->id,
-                'academic_year_id' => $year->id,
-                'semester_id' => $semester->id,
+                'academic_year_id' => $this->gradeYear->id,
+                'semester_id' => $this->gradeSemester->id,
                 'name' => 'BSIS 1A',
             ]);
         }
 
-        $instructor ??= Instructor::create([
+        $this->gradeInstructor ??= Instructor::create([
             'user_id' => User::factory()->create()->id,
             'employee_id' => 'EMP-9001',
         ]);
 
         $exam = Examination::create([
             'uuid' => (string) Str::uuid(),
-            'subject_id' => $subject->id,
-            'section_id' => $section->id,
-            'instructor_id' => $instructor->id,
-            'academic_year_id' => $year->id,
-            'semester_id' => $semester->id,
+            'subject_id' => $this->gradeSubject->id,
+            'section_id' => $this->gradeSection->id,
+            'instructor_id' => $this->gradeInstructor->id,
+            'academic_year_id' => $this->gradeYear->id,
+            'semester_id' => $this->gradeSemester->id,
             'examination_period' => 'MIDTERM',
             'title' => 'Test Exam '.$suffix,
             'duration_minutes' => 60,

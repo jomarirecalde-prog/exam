@@ -1,15 +1,13 @@
 <x-app-layout>
     <div class="ui-page">
         @php
-            use App\Enums\ResultStatus;
-
             $score = $grade?->raw_score;
             $total = $grade?->total_points ?: $examination->total_items;
             $percent = $grade?->percentage;
             $passed = (bool) $grade?->passed;
             $correct = $score !== null ? (int) round($score) : null;
             $incorrect = $correct !== null && $total ? max(0, (int) $total - $correct) : null;
-            $pendingGrading = $grade?->status === ResultStatus::PendingGrading;
+            $pendingGrading = $grade?->status === \App\Enums\ResultStatus::PendingGrading;
         @endphp
 
         <p class="ui-kicker">{{ $examination->subject?->code }}</p>

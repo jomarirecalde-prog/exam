@@ -140,14 +140,64 @@
                     <template x-for="(question, index) in questions" :key="question.id || index">
                         <article x-show="current === index + 1" class="exam-protected-content select-none">
                             <h1 class="mt-3 text-xl font-semibold leading-8" x-text="question.text"></h1>
-                            <fieldset class="mt-6 space-y-3">
+
+                            <p class="mt-2 text-sm leading-6 text-muted" x-show="question.instructions" x-text="question.instructions"></p>
+
+                            <figure class="mt-4" x-show="question.image_url">
+                                <img :src="question.image_url" alt="Question illustration" class="max-h-80 rounded-card border border-line object-contain">
+                            </figure>
+
+                            <fieldset class="mt-6 space-y-3" x-show="questionType(question) === 'multiple_choice'">
+                                <legend class="sr-only">Select one answer</legend>
                                 <template x-for="choice in question.choices" :key="choice.id">
-                                    <label class="flex cursor-pointer items-start gap-3 rounded-card border border-line px-4 py-3 hover:bg-brand-soft" :class="answers[current] === choice.id ? 'border-brand bg-brand-soft' : ''">
-                                        <input type="radio" class="mt-1 border-line text-navy-800" :name="'q'+current" :value="choice.id" @change="select(choice.id)" :checked="answers[current] === choice.id">
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-card border border-line px-4 py-3 hover:bg-brand-soft" :class="answers[index + 1] === choice.id ? 'border-brand bg-brand-soft' : ''">
+                                        <input type="radio" class="mt-1 border-line text-navy-800" :name="'q'+question.id" :value="choice.id" @change="select(choice.id)" :checked="answers[index + 1] === choice.id">
                                         <span><span class="mr-2 text-sm text-muted" x-text="choice.id"></span><span x-text="choice.text"></span></span>
                                     </label>
                                 </template>
                             </fieldset>
+
+                            <fieldset class="mt-6 space-y-3" x-show="questionType(question) === 'true_false'">
+                                <legend class="sr-only">Select True or False</legend>
+                                <template x-for="choice in question.choices" :key="choice.id">
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-card border border-line px-4 py-3 hover:bg-brand-soft" :class="answers[index + 1] === choice.id ? 'border-brand bg-brand-soft' : ''">
+                                        <input type="radio" class="mt-1 border-line text-navy-800" :name="'q'+question.id" :value="choice.id" @change="select(choice.id)" :checked="answers[index + 1] === choice.id">
+                                        <span class="font-medium" x-text="choice.text"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+
+                            <div class="mt-6" x-show="questionType(question) === 'essay'" x-cloak>
+                                <label class="text-sm font-medium text-ink" :for="'essay-answer-'+question.id">Your Answer</label>
+                                <textarea
+                                    :id="'essay-answer-'+question.id"
+                                    class="ui-input mt-2 min-h-48 w-full resize-y"
+                                    placeholder="Write your answer here..."
+                                    :value="answers[index + 1] || ''"
+                                    @input="setTextAnswer($event.target.value)"
+                                ></textarea>
+                                <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-muted">
+                                    <span>Words: <span x-text="wordCount(answers[index + 1])"></span></span>
+                                    <span x-show="current === index + 1 && saveStatusLabel" x-text="saveStatusLabel"></span>
+                                </div>
+                            </div>
+
+                            <div class="mt-6" x-show="questionType(question) === 'short_answer' || questionType(question) === 'identification'" x-cloak>
+                                <label class="text-sm font-medium text-ink" :for="'text-answer-'+question.id">Your Answer</label>
+                                <input
+                                    :id="'text-answer-'+question.id"
+                                    type="text"
+                                    class="ui-input mt-2 w-full"
+                                    placeholder="Enter your answer..."
+                                    :value="answers[index + 1] || ''"
+                                    @input="setTextAnswer($event.target.value)"
+                                >
+                                <p class="mt-2 text-sm text-muted" x-show="current === index + 1 && saveStatusLabel" x-text="saveStatusLabel"></p>
+                            </div>
+
+                            <div class="mt-6 rounded-card border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning-ink" x-show="!isSupportedQuestionType(question)" x-cloak>
+                                This question type is not supported in the examination interface.
+                            </div>
                         </article>
                     </template>
                 </main>
@@ -155,7 +205,18 @@
                     <p class="text-sm font-medium">Question Navigator</p>
                     <div class="mt-3 grid grid-cols-5 gap-2">
                         <template x-for="n in total" :key="n">
-                            <button type="button" class="h-9 rounded-btn border text-sm" @click="go(n)" x-text="n"></button>
+                            <button
+                                type="button"
+                                class="h-9 rounded-btn border text-sm transition-colors"
+                                :class="{
+                                    'border-brand bg-brand-soft font-semibold text-brand-ink': current === n,
+                                    'border-success bg-success-soft text-success-ink': current !== n && isAnswered(n),
+                                    'border-warning bg-warning-soft text-warning-ink': flagged[n],
+                                    'border-line text-muted': current !== n && !isAnswered(n) && !flagged[n],
+                                }"
+                                @click="go(n)"
+                                x-text="n"
+                            ></button>
                         </template>
                     </div>
                 </aside>

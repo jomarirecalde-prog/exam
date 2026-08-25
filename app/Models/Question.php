@@ -43,4 +43,39 @@ class Question extends Model
     {
         return $this->belongsTo(Instructor::class);
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toExamPayload(?float $pointsOverride = null): array
+    {
+        $type = $this->type->value ?? (string) $this->type;
+
+        $payload = [
+            'id' => $this->id,
+            'text' => $this->question_text,
+            'type' => $type,
+            'points' => $pointsOverride ?? $this->points,
+            'instructions' => is_array($this->metadata) ? ($this->metadata['instructions'] ?? null) : null,
+            'image_url' => $this->image_path ? asset('storage/'.$this->image_path) : null,
+            'choices' => [],
+        ];
+
+        if (! in_array($type, [QuestionType::MultipleChoice->value, QuestionType::TrueFalse->value], true)) {
+            return $payload;
+        }
+
+        $payload['choices'] = $this->choices->map(function (QuestionChoice $choice) use ($type) {
+            $id = $type === QuestionType::TrueFalse->value
+                ? strtolower((string) $choice->label)
+                : strtoupper((string) $choice->label);
+
+            return [
+                'id' => $id,
+                'text' => $choice->choice_text,
+            ];
+        })->values()->all();
+
+        return $payload;
+    }
 }
