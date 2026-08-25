@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\Examination;
+use App\Policies\ExaminationPolicy;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +27,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(Examination::class, ExaminationPolicy::class);
+
         $this->configureForVercel();
 
         date_default_timezone_set(config('examination.timezone', 'Asia/Manila'));

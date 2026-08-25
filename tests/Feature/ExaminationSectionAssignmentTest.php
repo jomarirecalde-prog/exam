@@ -338,6 +338,29 @@ class ExaminationSectionAssignmentTest extends TestCase
             ->assertSee(route('examinations.edit', $ownExam), false);
     }
 
+    public function test_admin_can_edit_any_examination(): void
+    {
+        $structure = $this->academicStructure();
+        $instructor = $this->instructor($structure['department']);
+
+        $exam = $this->makeExam($structure, [$structure['sectionA']->id], [
+            'title' => 'Admin Managed Exam',
+            'instructor_id' => $instructor->id,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->get(route('examinations.index'))
+            ->assertOk()
+            ->assertSee('View')
+            ->assertSee('Edit')
+            ->assertSee(route('examinations.edit', $exam), false);
+
+        $this->actingAs($this->admin())
+            ->get(route('examinations.edit', $exam))
+            ->assertOk()
+            ->assertSee('Edit Examination');
+    }
+
     public function test_students_cannot_open_the_create_form(): void
     {
         $structure = $this->academicStructure();
