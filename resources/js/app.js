@@ -237,13 +237,21 @@ window.csvImportPanel = function csvImportPanel(config = {}) {
                 this.pendingQuestions = data.questions || [];
 
                 if (!response.ok) {
-                    window.appToast(data.message || 'Unable to preview this CSV file.', 'error');
+                    const validationMessage = data.errors?.file?.[0];
+                    window.appToast(validationMessage || data.message || 'Unable to preview this CSV file.', 'error');
                     this.statusMessage = 'Validation failed. Please review the errors and try again.';
+                    if (this.rowErrors.length || this.previewRows.length) {
+                        this.previewOpen = true;
+                    }
                     return;
                 }
 
                 this.statusMessage = '';
                 this.previewOpen = true;
+
+                if ((this.stats.valid ?? 0) === 0) {
+                    window.appToast(data.message || 'No valid questions were found in this CSV file.', 'warning');
+                }
             } catch (error) {
                 window.appToast('Unable to preview the CSV file.', 'error');
                 this.statusMessage = 'Validation failed. Please review the errors and try again.';

@@ -195,14 +195,16 @@ class ExaminationController extends Controller
         $subjectId = $request->integer('subject_id') ?: null;
         $result = $importer->import($request->file('file')->getRealPath(), $subjectId);
 
-        if ($result['stats']['total'] === 0 && $result['stats']['valid'] === 0) {
+        if ($result['stats']['valid'] === 0) {
             return response()->json([
-                'message' => 'Unable to preview this CSV file.',
+                'message' => $result['stats']['total'] === 0
+                    ? 'Unable to preview this CSV file.'
+                    : 'No valid questions were found in this CSV file.',
                 'errors' => $result['errors'],
                 'rowErrors' => $result['rowErrors'],
                 'stats' => $result['stats'],
                 'preview' => $result['preview'],
-            ], 422);
+            ]);
         }
 
         $token = (string) Str::uuid();

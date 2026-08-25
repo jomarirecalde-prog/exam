@@ -94,6 +94,43 @@ class QuestionCsvImportTest extends TestCase
             ->assertJsonStructure(['message', 'errors', 'stats', 'preview']);
     }
 
+    public function test_preview_accepts_csv_with_plain_text_mime_type(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $user->assignRole(UserRole::Instructor->value);
+
+        $csv = implode("\n", [
+            'question,type,choice_a,choice_b,choice_c,choice_d,correct_answer,points,difficulty,topic,sample_answer',
+            'What is 2 + 2?,multiple_choice,3,4,,,B,1,easy,Math,',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('questions.csv', $csv, 'text/plain');
+
+        $response = $this->actingAs($user)->postJson(route('examinations.preview-questions-csv'), [
+            'file' => $file,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('imported', 1);
+    }
+
+    public function test_preview_reports_structural_csv_errors_without_422(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $user->assignRole(UserRole::Instructor->value);
+
+        $file = UploadedFile::fake()->createWithContent('questions.csv', 'not,a,valid,template');
+
+        $response = $this->actingAs($user)->postJson(route('examinations.preview-questions-csv'), [
+            'file' => $file,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('stats.valid', 0)
+            ->assertJsonMissingPath('token')
+            ->assertJsonStructure(['message', 'rowErrors', 'stats']);
+    }
+
     public function test_instructor_can_download_csv_template(): void
     {
         $user = User::factory()->create(['is_active' => true]);
