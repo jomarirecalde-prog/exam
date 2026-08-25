@@ -136,10 +136,12 @@ class Navigation
             'label' => $user->hasAnyRole(['superadmin', 'admin']) ? null : 'Examinations',
             'items' => array_values(array_filter([
                 ['label' => 'All Examinations', 'route' => 'examinations.index', 'icon' => 'clipboard-list'],
-                $user->hasAnyRole(['superadmin', 'admin', 'instructor'])
+                $user->hasRole('instructor')
                     ? ['label' => 'Create Examination', 'route' => 'examinations.create', 'icon' => 'plus']
                     : null,
-                ['label' => 'Question Bank', 'route' => 'questions.index', 'icon' => 'file-question'],
+                $user->hasAnyRole(['superadmin', 'admin'])
+                    ? null
+                    : ['label' => 'Question Bank', 'route' => 'questions.index', 'icon' => 'file-question'],
                 ['label' => 'Schedules', 'route' => 'schedules.index', 'icon' => 'calendar'],
             ])),
         ];
