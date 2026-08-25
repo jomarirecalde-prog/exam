@@ -21,47 +21,59 @@
             {{-- Active examinations list --}}
             <section class="mb-8">
                 <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-muted">My Active Examinations</h2>
-                <div class="grid gap-4 lg:grid-cols-2">
-                    <template x-for="exam in examinations" :key="exam.id">
-                        <article
-                            class="ui-card ui-card-pad cursor-pointer transition hover:border-brand/40"
-                            :class="selectedExamId === exam.id ? 'border-brand ring-1 ring-brand/20' : ''"
-                            @click="selectExam(exam)"
-                        >
-                            <div class="flex items-start justify-between gap-3">
-                                <div>
+                <x-ui.card class="overflow-hidden" :padding="false">
+                    <template x-if="examinations.length === 0">
+                        <div class="px-5 py-8 text-center text-sm text-muted">No active examinations found.</div>
+                    </template>
+                    <div class="divide-y divide-line">
+                        <template x-for="exam in examinations" :key="exam.id">
+                            <div
+                                class="flex flex-col gap-4 px-5 py-5 transition sm:flex-row sm:items-center sm:justify-between"
+                                :class="selectedExamId === exam.id ? 'bg-brand-soft/50' : 'hover:bg-brand-soft/30'"
+                            >
+                                <div class="min-w-0 flex-1">
                                     <p class="text-xs font-medium uppercase tracking-wide text-muted" x-text="exam.subject_code || exam.subject"></p>
                                     <h3 class="mt-1 text-lg font-semibold" x-text="exam.title"></h3>
                                     <p class="mt-1 text-sm text-muted">
                                         Section: <span x-text="exam.sections"></span>
                                     </p>
+                                    <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                                        <span
+                                            class="inline-flex items-center gap-1.5 font-medium"
+                                            :class="exam.is_live ? 'text-success-ink' : 'text-muted'"
+                                        >
+                                            <span class="h-2 w-2 rounded-full" :class="exam.is_live ? 'bg-success-ink animate-pulse' : 'bg-muted'"></span>
+                                            <span x-text="exam.is_live ? 'LIVE' : 'Scheduled'"></span>
+                                        </span>
+                                        <span class="text-muted">
+                                            Students taking exam:
+                                            <span class="font-semibold text-ink" x-text="examCardStats(exam.id).taking"></span>
+                                            /
+                                            <span x-text="examCardStats(exam.id).total || '—'"></span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <span
-                                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                                    :class="exam.is_live ? 'bg-success-soft text-success-ink' : 'bg-brand-soft text-muted'"
-                                >
-                                    <span class="h-1.5 w-1.5 rounded-full" :class="exam.is_live ? 'bg-success-ink animate-pulse' : 'bg-muted'"></span>
-                                    <span x-text="exam.is_live ? 'LIVE' : 'Scheduled'"></span>
-                                </span>
+                                <div class="shrink-0">
+                                    <button
+                                        type="button"
+                                        class="btn-primary w-full sm:w-auto"
+                                        @click="selectExam(exam)"
+                                        x-text="selectedExamId === exam.id ? 'Monitoring' : 'Monitor Examination'"
+                                    ></button>
+                                </div>
                             </div>
-                            <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-                                <p class="text-sm text-muted">
-                                    Students taking exam:
-                                    <span class="font-semibold text-ink" x-text="examCardStats(exam.id).taking"></span>
-                                    /
-                                    <span x-text="examCardStats(exam.id).total || '—'"></span>
-                                </p>
-                                <button
-                                    type="button"
-                                    class="btn-primary btn-sm"
-                                    @click.stop="selectExam(exam)"
-                                    x-text="selectedExamId === exam.id ? 'Monitoring' : 'Monitor Examination'"
-                                ></button>
-                            </div>
-                        </article>
-                    </template>
-                </div>
+                        </template>
+                    </div>
+                </x-ui.card>
             </section>
+
+            <template x-if="!selectedExam">
+                <x-ui.card>
+                    <x-ui.empty-state title="Select an examination to monitor." icon="activity">
+                        Choose an active examination from the list above to view student progress, violations, and connection status.
+                    </x-ui.empty-state>
+                </x-ui.card>
+            </template>
 
             <template x-if="selectedExam">
                 <div class="space-y-6">

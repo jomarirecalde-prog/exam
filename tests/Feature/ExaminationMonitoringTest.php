@@ -50,7 +50,9 @@ class ExaminationMonitoringTest extends TestCase
             ->get(route('monitoring.index'))
             ->assertOk()
             ->assertSee('Examination Monitoring')
-            ->assertSee('Policy Monitoring Exam');
+            ->assertSee('Policy Monitoring Exam')
+            ->assertSee('My Active Examinations')
+            ->assertSee('Select an examination to monitor');
     }
 
     public function test_student_cannot_access_monitoring_page(): void

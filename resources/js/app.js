@@ -2381,8 +2381,8 @@ window.examMonitoring = function examMonitoring(config) {
 
     return {
         examinations: config.examinations || [],
-        selectedExamId: config.examinations?.[0]?.id || null,
-        selectedExam: config.examinations?.[0] || null,
+        selectedExamId: null,
+        selectedExam: null,
         examination: null,
         summary: {},
         students: [],
@@ -2421,9 +2421,40 @@ window.examMonitoring = function examMonitoring(config) {
         knownStates: {},
 
         init() {
-            if (this.selectedExam) {
-                this.refresh(false, true);
-                this.pollTimer = setInterval(() => this.refresh(true), 5000);
+            this.prefetchExamSummaries();
+        },
+
+        async prefetchExamSummaries() {
+            await Promise.all(
+                (this.examinations || []).map(async (exam) => {
+                    if (!exam.dataUrl || this.examSummaries[exam.id]) {
+                        return;
+                    }
+
+                    try {
+                        const data = await api(exam.dataUrl);
+                        if (data.summary) {
+                            this.examSummaries[exam.id] = data.summary;
+                        }
+                    } catch {
+                        /* overview counts are best-effort */
+                    }
+                }),
+            );
+        },
+
+        startPolling() {
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+            }
+
+            this.pollTimer = setInterval(() => this.refresh(true), 5000);
+        },
+
+        stopPolling() {
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
             }
         },
 
@@ -2483,11 +2514,24 @@ window.examMonitoring = function examMonitoring(config) {
         },
 
         selectExam(exam) {
+            if (this.selectedExamId === exam.id) {
+                return;
+            }
+
+            this.stopPolling();
             this.selectedExamId = exam.id;
             this.selectedExam = exam;
             this.lastSyncAt = null;
             this.students = [];
+            this.activities = [];
+            this.summary = {};
+            this.examination = null;
+            this.knownStates = {};
+            this.searchQuery = '';
+            this.statusFilter = 'all';
+            this.sortBy = 'priority';
             this.refresh(false, true);
+            this.startPolling();
         },
 
         async refresh(silent = false, full = false) {
