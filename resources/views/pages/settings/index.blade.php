@@ -37,10 +37,11 @@
             <x-ui.card x-data="pwaInstallPrompt()" x-init="init()">
                 <h2 class="ui-section">Application</h2>
                 <p class="mt-2 text-sm text-muted">Install this examination system as an application for faster access and offline examination support.</p>
-                <div class="mt-4 flex flex-wrap gap-2">
+                <div class="mt-4 flex flex-wrap items-center gap-2">
                     <button type="button" class="btn-primary" x-show="canInstall" @click="install()">Install App</button>
                     <span class="text-sm text-muted" x-show="installed">Application installed</span>
-                    <span class="text-sm text-muted" x-show="!canInstall && !installed">Installation is available in supported browsers when signed in.</span>
+                    <span class="text-sm text-muted" x-show="!canInstall && !installed && statusMessage" x-text="statusMessage"></span>
+                    <span class="text-sm text-muted" x-show="!canInstall && !installed && !statusMessage">Checking install availability…</span>
                 </div>
             </x-ui.card>
         </div>

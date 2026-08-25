@@ -8,6 +8,17 @@ use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
+Route::get('/manifest.webmanifest', function () {
+    $path = public_path('manifest.webmanifest');
+
+    abort_unless(is_file($path), 404);
+
+    return response()->file($path, [
+        'Content-Type' => 'application/manifest+json',
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
+})->name('pwa.manifest');
+
 Route::middleware('guest')->group(function () {
     Route::get('/register/student', [StudentRegistrationController::class, 'create'])->name('student-registration.create');
     Route::post('/register/student', [StudentRegistrationController::class, 'store'])
