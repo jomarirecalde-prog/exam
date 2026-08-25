@@ -165,6 +165,82 @@ class ExaminationScheduleTest extends TestCase
         ]);
     }
 
+    public function test_instructor_can_reactivate_ended_examination(): void
+    {
+        $data = $this->scenarioWithPublishedExam(
+            availableFrom: now()->subHour(),
+            deadlineAt: now()->addDay(),
+        );
+
+        $data['examination']->update([
+            'status' => ExamStatus::Ended,
+            'ended_at' => now(),
+            'ended_by_user_id' => $data['instructorUser']->id,
+            'end_reason' => 'Class schedule has ended.',
+            'end_policy' => ExamEndPolicy::AutoSubmit,
+        ]);
+
+        $response = $this->actingAs($data['instructorUser'])->postJson(
+            route('monitoring.reactivate-examination', $data['examination']),
+            ['reason' => 'Additional students need to take the exam.'],
+        );
+
+        $response->assertOk()->assertJsonPath('message', 'Examination reactivated successfully.');
+
+        $data['examination']->refresh();
+        $this->assertEquals(ExamStatus::Active, $data['examination']->status);
+        $this->assertNull($data['examination']->ended_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'reactivate_examination',
+            'module' => 'examinations',
+            'record_id' => $data['examination']->id,
+        ]);
+    }
+
+    public function test_reactivating_closed_exam_with_past_deadline_requires_new_deadline(): void
+    {
+        $data = $this->scenarioWithPublishedExam(
+            availableFrom: now()->subDays(2),
+            deadlineAt: now()->subDay(),
+        );
+
+        $data['examination']->update(['status' => ExamStatus::Closed]);
+
+        $this->actingAs($data['instructorUser'])
+            ->postJson(route('monitoring.reactivate-examination', $data['examination']))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Set a new deadline in the future to reactivate this examination.');
+
+        $response = $this->actingAs($data['instructorUser'])->postJson(
+            route('monitoring.reactivate-examination', $data['examination']),
+            [
+                'reason' => 'Extended review period.',
+                'deadline_date' => now()->addDay()->format('Y-m-d'),
+                'deadline_time' => '17:00',
+            ],
+        );
+
+        $response->assertOk();
+        $data['examination']->refresh();
+        $this->assertEquals(ExamStatus::Active, $data['examination']->status);
+    }
+
+    public function test_unauthorized_instructor_cannot_reactivate_examination(): void
+    {
+        $data = $this->scenarioWithPublishedExam(
+            availableFrom: now()->subHour(),
+            deadlineAt: now()->addDay(),
+        );
+
+        $data['examination']->update(['status' => ExamStatus::Ended, 'ended_at' => now()]);
+
+        $otherInstructor = $this->makeInstructor($data['department']);
+
+        $this->actingAs($otherInstructor->user)
+            ->postJson(route('monitoring.reactivate-examination', $data['examination']))
+            ->assertForbidden();
+    }
+
     public function test_unauthorized_instructor_cannot_end_examination(): void
     {
         $data = $this->scenarioWithPublishedExam(

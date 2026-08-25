@@ -13,6 +13,7 @@
             'dataUrl' => route('monitoring.data', $examination),
             'controlUrl' => route('monitoring.control', $examination),
             'endUrl' => route('monitoring.end', $examination),
+            'reactivateExaminationUrl' => route('monitoring.reactivate-examination', $examination),
             'extendDeadlineUrl' => route('monitoring.extend-deadline', $examination),
             'editUrl' => route('examinations.edit', $examination),
         ],
@@ -53,6 +54,7 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <a :href="selectedExam?.editUrl" class="btn-secondary">Edit Examination</a>
+                        <button type="button" class="btn-primary" x-show="control?.can_reactivate" @click="openReactivateExamination()" x-cloak>Reactivate Examination</button>
                         <button type="button" class="btn-secondary" x-show="control?.can_extend_deadline" @click="openExtendDeadline()" x-cloak>Extend Deadline</button>
                         <button type="button" class="btn-secondary text-danger-ink" x-show="control?.can_end" @click="openEndExamination()" x-cloak>End Examination</button>
                     </div>

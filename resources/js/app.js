@@ -2576,6 +2576,20 @@ window.examMonitoring = function examMonitoring(config) {
         extendReason: '',
         extendDeadlineError: '',
         extendDeadlineSubmitting: false,
+        reactivateExamOpen: false,
+        reactivateExamReason: '',
+        reactivateDeadlineDate: '',
+        reactivateDeadlineTime: '',
+        reactivateExamError: '',
+        reactivateExamSubmitting: false,
+
+        get reactivateExamNeedsDeadline() {
+            if (this.control?.is_ended && this.examination?.deadline_at) {
+                return (this.examination?.deadline_remaining_seconds ?? 0) <= 0;
+            }
+
+            return false;
+        },
 
         get deadlineCountdownLabel() {
             const seconds = this.examination?.deadline_remaining_seconds;
@@ -2655,6 +2669,58 @@ window.examMonitoring = function examMonitoring(config) {
             this.extendReason = '';
             this.extendDeadlineError = '';
             this.extendDeadlineOpen = true;
+        },
+
+        openReactivateExamination() {
+            this.reactivateExamReason = '';
+            this.reactivateDeadlineDate = '';
+            this.reactivateDeadlineTime = '';
+            this.reactivateExamError = '';
+            this.reactivateExamOpen = true;
+        },
+
+        async submitReactivateExamination() {
+            if (!this.selectedExam?.reactivateExaminationUrl || this.reactivateExamSubmitting) {
+                return;
+            }
+
+            if (this.reactivateExamNeedsDeadline && (!this.reactivateDeadlineDate || !this.reactivateDeadlineTime)) {
+                this.reactivateExamError = 'Please set a new deadline before reactivating.';
+                return;
+            }
+
+            this.reactivateExamSubmitting = true;
+            this.reactivateExamError = '';
+
+            try {
+                const payload = {
+                    reason: this.reactivateExamReason || null,
+                };
+
+                if (this.reactivateDeadlineDate) {
+                    payload.deadline_date = this.reactivateDeadlineDate;
+                    payload.deadline_time = this.reactivateDeadlineTime || '23:59';
+                }
+
+                const data = await api(this.selectedExam.reactivateExaminationUrl, {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+
+                this.reactivateExamOpen = false;
+
+                if (data.activity) {
+                    this.activities = [data.activity, ...(this.activities || [])];
+                }
+
+                window.appToast?.(data.message || 'Examination reactivated.');
+                await this.refresh(false, true);
+                await this.loadControl();
+            } catch (error) {
+                this.reactivateExamError = error.message || 'Unable to reactivate the examination.';
+            } finally {
+                this.reactivateExamSubmitting = false;
+            }
         },
 
         async submitExtendDeadline() {

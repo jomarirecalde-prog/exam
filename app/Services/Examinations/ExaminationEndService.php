@@ -140,6 +140,79 @@ class ExaminationEndService
         return $this->schedule->schedulePayload($examination->fresh(['endedBy']));
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function reactivateExamination(
+        Examination $examination,
+        User $user,
+        ?string $reason = null,
+        ?Carbon $newDeadline = null,
+    ): array {
+        if (! app(ExaminationAccessService::class)->canManage($user, $examination)) {
+            throw new InvalidArgumentException('You are not authorized to reactivate this examination.');
+        }
+
+        if (! in_array($examination->status, [ExamStatus::Ended, ExamStatus::Closed, ExamStatus::Expired], true)) {
+            throw new InvalidArgumentException('Only ended examinations can be reactivated.');
+        }
+
+        $reason = trim((string) $reason) ?: null;
+
+        return DB::transaction(function () use ($examination, $user, $reason, $newDeadline) {
+            $examination = Examination::query()->lockForUpdate()->findOrFail($examination->id);
+
+            if (! in_array($examination->status, [ExamStatus::Ended, ExamStatus::Closed, ExamStatus::Expired], true)) {
+                throw new InvalidArgumentException('Only ended examinations can be reactivated.');
+            }
+
+            $deadlinePassed = $this->schedule->isPastDeadline($examination);
+
+            if ($deadlinePassed && ! $newDeadline) {
+                throw new InvalidArgumentException('Set a new deadline in the future to reactivate this examination.');
+            }
+
+            if ($newDeadline) {
+                if ($examination->available_from && $newDeadline->lessThanOrEqualTo($examination->available_from)) {
+                    throw new InvalidArgumentException('The new deadline must be after the examination start time.');
+                }
+
+                if ($newDeadline->lessThanOrEqualTo(now())) {
+                    throw new InvalidArgumentException('The new deadline must be in the future.');
+                }
+            }
+
+            $updates = [
+                'status' => $this->schedule->resolvePublishedStatus($examination->available_from),
+                'ended_at' => null,
+                'ended_by_user_id' => null,
+                'end_reason' => null,
+                'end_policy' => null,
+            ];
+
+            if ($newDeadline) {
+                $updates['deadline_at'] = $newDeadline;
+            }
+
+            $examination->update($updates);
+
+            $this->audit->log(
+                $user,
+                'reactivate_examination',
+                'examinations',
+                Examination::class,
+                $examination->id,
+                [
+                    'title' => $examination->title,
+                    'reason' => $reason,
+                    'new_deadline' => $newDeadline?->toIso8601String(),
+                ],
+            );
+
+            return $this->schedule->schedulePayload($examination->fresh(['endedBy']));
+        });
+    }
+
     public function processDeadline(Examination $examination): int
     {
         if (! $this->schedule->isPastDeadline($examination)) {

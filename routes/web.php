@@ -142,6 +142,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/examinations/{examination}/data', [\App\Http\Controllers\ExaminationMonitoringController::class, 'data'])->name('data');
         Route::get('/examinations/{examination}/control', [\App\Http\Controllers\ExaminationControlController::class, 'show'])->name('control');
         Route::post('/examinations/{examination}/end', [\App\Http\Controllers\ExaminationControlController::class, 'end'])->name('end');
+        Route::post('/examinations/{examination}/reactivate', [\App\Http\Controllers\ExaminationControlController::class, 'reactivate'])->name('reactivate-examination');
         Route::post('/examinations/{examination}/extend-deadline', [\App\Http\Controllers\ExaminationControlController::class, 'extendDeadline'])->name('extend-deadline');
         Route::get('/attempts/{attempt}', [\App\Http\Controllers\ExaminationMonitoringController::class, 'showAttempt'])->name('attempts.show');
         Route::get('/attempts/{attempt}/violations', [\App\Http\Controllers\ExaminationMonitoringController::class, 'violations'])->name('violations');

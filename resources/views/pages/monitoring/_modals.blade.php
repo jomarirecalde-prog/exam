@@ -146,6 +146,39 @@
     </div>
 </div>
 
+{{-- Reactivate examination modal --}}
+<div x-show="reactivateExamOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+    <div class="absolute inset-0 bg-navy-950/50" @click="!reactivateExamSubmitting && (reactivateExamOpen = false)"></div>
+    <div class="relative w-full max-w-lg rounded-modal border border-line bg-surface p-6 shadow-pop">
+        <h2 class="text-lg font-semibold">Reactivate Examination?</h2>
+        <p class="mt-2 text-sm text-muted">You are about to reopen:</p>
+        <p class="mt-1 font-medium" x-text="selectedExam?.title"></p>
+        <p class="text-sm text-muted" x-text="selectedExam?.subject"></p>
+        <p class="mt-4 text-sm leading-6 text-muted">
+            Students will be able to take or continue the examination again. Previously submitted attempts are preserved.
+        </p>
+        <div class="mt-5" x-show="reactivateExamNeedsDeadline" x-cloak>
+            <p class="text-sm font-medium text-warning-ink">A new deadline is required because the previous deadline has passed.</p>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <x-ui.field label="New Deadline — Date" for="reactivateDeadlineDate">
+                    <input class="ui-input" id="reactivateDeadlineDate" type="date" x-model="reactivateDeadlineDate">
+                </x-ui.field>
+                <x-ui.field label="New Deadline — Time" for="reactivateDeadlineTime">
+                    <input class="ui-input" id="reactivateDeadlineTime" type="time" x-model="reactivateDeadlineTime">
+                </x-ui.field>
+            </div>
+        </div>
+        <x-ui.field label="Reason for Reactivation" for="reactivateExamReason" class="mt-4">
+            <input class="ui-input" id="reactivateExamReason" type="text" placeholder="Additional students need to take the exam." x-model="reactivateExamReason">
+        </x-ui.field>
+        <p class="mt-3 text-sm text-danger-ink" x-show="reactivateExamError" x-text="reactivateExamError"></p>
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="btn-secondary" @click="reactivateExamOpen = false" :disabled="reactivateExamSubmitting">Cancel</button>
+            <button type="button" class="btn-primary" @click="submitReactivateExamination()" :disabled="reactivateExamSubmitting">Reactivate Examination</button>
+        </div>
+    </div>
+</div>
+
 {{-- Extend deadline modal --}}
 <div x-show="extendDeadlineOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
     <div class="absolute inset-0 bg-navy-950/50" @click="extendDeadlineOpen = false"></div>
