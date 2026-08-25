@@ -10,6 +10,7 @@ use App\Models\Program;
 use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Student;
+use App\Models\Subject;
 use App\Models\User;
 use App\Models\YearLevel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,6 +107,78 @@ class DeleteManagementTest extends TestCase
 
         $this->actingAs($instructor)
             ->delete(route('sections.destroy', $structure['section']))
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_delete_subject_without_dependencies(): void
+    {
+        $subject = Subject::create([
+            'department_id' => $this->academicStructure()['department']->id,
+            'code' => 'TEMP101',
+            'name' => 'Temporary Subject',
+            'units' => 3,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->delete(route('subjects.destroy', $subject))
+            ->assertRedirect(route('subjects.index'));
+
+        $this->assertFalse($subject->fresh()->is_active);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'delete',
+            'module' => 'subjects',
+            'record_id' => $subject->id,
+        ]);
+    }
+
+    public function test_subject_delete_is_blocked_when_students_are_enrolled(): void
+    {
+        $student = $this->student();
+        $subject = Subject::create([
+            'department_id' => $student->program->department_id,
+            'code' => 'IS101',
+            'name' => 'Intro to IS',
+            'units' => 3,
+            'is_active' => true,
+        ]);
+
+        $year = AcademicYear::query()->firstOrFail();
+        $semester = Semester::query()->firstOrFail();
+
+        \App\Models\StudentSubject::create([
+            'student_id' => $student->id,
+            'subject_id' => $subject->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'status' => 'verified',
+        ]);
+
+        $this->actingAs($this->admin())
+            ->from(route('subjects.index'))
+            ->delete(route('subjects.destroy', $subject))
+            ->assertRedirect(route('subjects.index'))
+            ->assertSessionHas('error');
+
+        $this->assertTrue($subject->fresh()->is_active);
+    }
+
+    public function test_instructor_cannot_delete_subjects(): void
+    {
+        $subject = Subject::create([
+            'department_id' => $this->academicStructure()['department']->id,
+            'code' => 'TEMP102',
+            'name' => 'Another Temporary Subject',
+            'units' => 3,
+            'is_active' => true,
+        ]);
+
+        $instructor = User::factory()->create(['is_active' => true]);
+        $instructor->assignRole(UserRole::Instructor->value);
+
+        $this->actingAs($instructor)
+            ->delete(route('subjects.destroy', $subject))
             ->assertForbidden();
     }
 

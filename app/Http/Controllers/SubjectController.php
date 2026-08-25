@@ -10,6 +10,8 @@ use App\Models\Instructor;
 use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Subject;
+use App\Services\Academic\SubjectDeletionService;
+use App\Services\AuditLogger;
 use App\Services\Students\AcademicLookupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,12 @@ use Illuminate\View\View;
 
 class SubjectController extends Controller
 {
+    public function __construct(
+        protected SubjectDeletionService $deletion,
+        protected AuditLogger $auditLogger,
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('q'));
@@ -38,7 +46,10 @@ class SubjectController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('pages.subjects.index', compact('subjects', 'search'));
+        $deletionAnalyses = $subjects->getCollection()
+            ->mapWithKeys(fn (Subject $subject) => [$subject->id => $this->deletion->analyze($subject)]);
+
+        return view('pages.subjects.index', compact('subjects', 'search', 'deletionAnalyses'));
     }
 
     public function create(): View
@@ -124,13 +135,51 @@ class SubjectController extends Controller
             ->with('status', 'Subject updated successfully.');
     }
 
-    public function destroy(Subject $subject): RedirectResponse
+    public function destroy(Request $request, Subject $subject): RedirectResponse
     {
-        $subject->update(['is_active' => false]);
+        $this->authorize('delete', $subject);
+
+        $analysis = $this->deletion->analyze($subject);
+
+        if (! $this->deletion->delete($subject)) {
+            $this->auditLogger->log(
+                $request->user(),
+                'delete_blocked',
+                'subjects',
+                Subject::class,
+                $subject->id,
+                [
+                    'name' => $subject->name,
+                    'code' => $subject->code,
+                    'role' => $request->user()?->getRoleNames()->first(),
+                    'succeeded' => false,
+                    'reason' => $analysis->blockedMessage(),
+                    'blockers' => $analysis->blockers,
+                ],
+            );
+
+            return redirect()
+                ->route('subjects.index')
+                ->with('error', $analysis->blockedMessage());
+        }
+
+        $this->auditLogger->log(
+            $request->user(),
+            'delete',
+            'subjects',
+            Subject::class,
+            $subject->id,
+            [
+                'name' => $subject->name,
+                'code' => $subject->code,
+                'role' => $request->user()?->getRoleNames()->first(),
+                'succeeded' => true,
+            ],
+        );
 
         return redirect()
             ->route('subjects.index')
-            ->with('status', 'Subject deactivated.');
+            ->with('status', 'Subject deleted successfully.');
     }
 
     protected function formOptions(): array
