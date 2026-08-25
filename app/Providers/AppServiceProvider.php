@@ -143,9 +143,19 @@ class AppServiceProvider extends ServiceProvider
 
     protected function runPendingMigrations(string $tmpStorage): void
     {
-        $stampFile = $tmpStorage.'/migrated.stamp';
+        $latestMigration = collect(glob(database_path('migrations/*.php')))
+            ->map(fn (string $path) => basename($path))
+            ->sort()
+            ->last();
 
-        if (is_file($stampFile)) {
+        if (! is_string($latestMigration) || $latestMigration === '') {
+            return;
+        }
+
+        $stampFile = $tmpStorage.'/migrated.stamp';
+        $stamped = is_file($stampFile) ? trim((string) file_get_contents($stampFile)) : '';
+
+        if ($stamped === $latestMigration) {
             return;
         }
 
@@ -157,12 +167,12 @@ class AppServiceProvider extends ServiceProvider
         }
 
         try {
-            if (is_file($stampFile)) {
+            if (is_file($stampFile) && trim((string) file_get_contents($stampFile)) === $latestMigration) {
                 return;
             }
 
             Artisan::call('migrate', ['--force' => true]);
-            file_put_contents($stampFile, (string) time());
+            file_put_contents($stampFile, $latestMigration);
         } catch (Throwable $exception) {
             Log::error('Automatic Vercel migration failed.', [
                 'error' => $exception->getMessage(),
