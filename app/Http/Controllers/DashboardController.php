@@ -79,7 +79,6 @@ class DashboardController extends Controller
             ? Grade::query()
                 ->with('examination.subject')
                 ->where('student_id', $student->id)
-                ->where('is_released', true)
                 ->latest()
                 ->limit(5)
                 ->get()

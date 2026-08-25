@@ -1,21 +1,30 @@
 <x-app-layout>
     <div class="ui-page">
         @php
+            use App\Enums\ResultStatus;
+
             $score = $grade?->raw_score;
             $total = $grade?->total_points ?: $examination->total_items;
             $percent = $grade?->percentage;
             $passed = (bool) $grade?->passed;
             $correct = $score !== null ? (int) round($score) : null;
             $incorrect = $correct !== null && $total ? max(0, (int) $total - $correct) : null;
+            $pendingGrading = $grade?->status === ResultStatus::PendingGrading;
         @endphp
 
         <p class="ui-kicker">{{ $examination->subject?->code }}</p>
         <h1 class="mt-2 ui-title">{{ $examination->title }}</h1>
 
-        @if (! $grade || ! $grade->is_released && auth()->user()?->hasRole('student'))
+        @if (! $grade)
             <x-ui.card class="mt-8">
                 <x-ui.empty-state title="Results are not available yet." icon="bar-chart-3">
-                    Your score will appear here once results are released.
+                    Complete and submit the examination to view your score.
+                </x-ui.empty-state>
+            </x-ui.card>
+        @elseif ($pendingGrading && auth()->user()?->hasRole('student'))
+            <x-ui.card class="mt-8">
+                <x-ui.empty-state title="Examination submitted." icon="bar-chart-3">
+                    Some answers require manual grading. Your final score will update here once grading is complete.
                 </x-ui.empty-state>
             </x-ui.card>
         @else

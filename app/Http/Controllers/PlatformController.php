@@ -55,7 +55,7 @@ class PlatformController extends Controller
         $query = Grade::query()->with(['student.user', 'examination.subject'])->latest();
 
         if ($request->user()->hasRole('student') && $request->user()->student) {
-            $query->where('student_id', $request->user()->student->id)->where('is_released', true);
+            $query->where('student_id', $request->user()->student->id);
         }
 
         $grades = $query->paginate(10);

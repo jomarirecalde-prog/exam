@@ -70,7 +70,7 @@
                         </div>
                     </article>
                 @empty
-                    <p class="text-sm text-muted">Released results will appear here.</p>
+                    <p class="text-sm text-muted">Your examination scores will appear here after submission.</p>
                 @endforelse
             </div>
         </section>

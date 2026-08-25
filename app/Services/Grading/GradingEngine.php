@@ -91,7 +91,6 @@ class GradingEngine
     public function applyToAttempt(ExaminationAttempt $attempt): Grade
     {
         $result = $this->gradeAttempt($attempt);
-        $examination = $attempt->examination;
 
         $attempt->update([
             'score' => $result->rawScore,
@@ -99,35 +98,22 @@ class GradingEngine
             'passed' => $result->passed,
         ]);
 
-        $gradeAttributes = [
-            'examination_id' => $attempt->examination_id,
-            'student_id' => $attempt->student_id,
-            'raw_score' => $result->rawScore,
-            'total_points' => $result->totalPoints,
-            'percentage' => $result->percentage,
-            'letter_grade' => $result->letterGrade,
-            'status' => $result->status,
-            'passed' => $result->passed,
-            'grading_formula_id' => GradingFormula::where('is_default', true)->value('id'),
-        ];
-
-        if ($this->shouldReleaseResult($examination, $result)) {
-            $gradeAttributes['is_released'] = true;
-            $gradeAttributes['released_at'] = now();
-        } else {
-            $gradeAttributes['is_released'] = false;
-            $gradeAttributes['released_at'] = null;
-        }
-
         return Grade::updateOrCreate(
             ['examination_attempt_id' => $attempt->id],
-            $gradeAttributes
+            [
+                'examination_id' => $attempt->examination_id,
+                'student_id' => $attempt->student_id,
+                'raw_score' => $result->rawScore,
+                'total_points' => $result->totalPoints,
+                'percentage' => $result->percentage,
+                'letter_grade' => $result->letterGrade,
+                'status' => $result->status,
+                'passed' => $result->passed,
+                'grading_formula_id' => GradingFormula::where('is_default', true)->value('id'),
+                'is_released' => true,
+                'released_at' => now(),
+            ]
         );
-    }
-
-    protected function shouldReleaseResult(Examination $examination, GradingResult $result): bool
-    {
-        return $result->status !== ResultStatus::PendingGrading;
     }
 
     public function evaluateObjectiveAnswer(Question $question, mixed $studentAnswer): bool

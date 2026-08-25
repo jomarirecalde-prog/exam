@@ -142,15 +142,15 @@ class GradingEngineTest extends TestCase
         $this->assertSame(ResultStatus::Passed, $grade->status);
     }
 
-    public function test_apply_to_attempt_does_not_release_pending_manual_grading(): void
+    public function test_apply_to_attempt_releases_pending_manual_grading(): void
     {
         $question = $this->makeQuestion(QuestionType::Essay, null, 5);
         $attempt = $this->makeAttempt($question, 'Sample essay response');
 
         $grade = $this->engine->applyToAttempt($attempt);
 
-        $this->assertFalse($grade->is_released);
-        $this->assertNull($grade->released_at);
+        $this->assertTrue($grade->is_released);
+        $this->assertNotNull($grade->released_at);
         $this->assertSame(ResultStatus::PendingGrading, $grade->status);
     }
 

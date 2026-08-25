@@ -6,7 +6,7 @@
     <div class="ui-page">
         <x-ui.page-header
             title="Examination Results"
-            :subtitle="$isStudent ? 'Your released examination scores.' : 'Released scores and pending grades.'"
+            :subtitle="$isStudent ? 'Your examination scores.' : 'Released scores and pending grades.'"
         />
         <x-ui.toolbar placeholder="Search results" />
         <div class="ui-table-wrap mt-4">
@@ -14,7 +14,7 @@
                 <div class="px-5">
                     <x-ui.empty-state title="No results yet." icon="bar-chart-3">
                         @if ($isStudent)
-                            Your scores will appear here once your instructor releases them.
+                            Your scores will appear here after you submit an examination.
                         @else
                             Results appear here after grading and release.
                         @endif

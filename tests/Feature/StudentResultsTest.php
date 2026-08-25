@@ -30,7 +30,7 @@ class StudentResultsTest extends TestCase
         Role::findOrCreate('student');
     }
 
-    public function test_student_sees_only_their_released_results_on_results_page(): void
+    public function test_student_sees_all_of_their_results_on_results_page(): void
     {
         $studentUser = User::factory()->create(['email_verified_at' => now()]);
         $studentUser->assignRole('student');
@@ -44,17 +44,17 @@ class StudentResultsTest extends TestCase
             'student_id' => 'STU-9002',
         ]);
 
-        $released = $this->createGradeForStudent($student, released: true, suffix: 'released');
-        $this->createGradeForStudent($student, released: false, suffix: 'pending');
-        $this->createGradeForStudent($otherStudent, released: true, suffix: 'other');
+        $this->createGradeForStudent($student, suffix: 'first');
+        $this->createGradeForStudent($student, suffix: 'second');
+        $this->createGradeForStudent($otherStudent, suffix: 'other');
 
         $response = $this->actingAs($studentUser)->get(route('results.index'));
 
         $response->assertOk();
-        $response->assertViewHas('grades', fn ($grades) => $grades->count() === 1 && $grades->first()->is($released));
+        $response->assertViewHas('grades', fn ($grades) => $grades->count() === 2);
     }
 
-    protected function createGradeForStudent(Student $student, bool $released, string $suffix): Grade
+    protected function createGradeForStudent(Student $student, string $suffix): Grade
     {
         static $year;
         static $semester;
@@ -122,8 +122,8 @@ class StudentResultsTest extends TestCase
             'percentage' => 80,
             'status' => ResultStatus::Passed,
             'passed' => true,
-            'is_released' => $released,
-            'released_at' => $released ? now() : null,
+            'is_released' => true,
+            'released_at' => now(),
         ]);
     }
 }
