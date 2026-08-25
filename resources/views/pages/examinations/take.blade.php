@@ -10,6 +10,7 @@
             'maxWarnings' => $maxWarnings,
             'policyVersion' => $policyVersion,
             'attemptState' => $attemptState,
+            'schedule' => $schedule ?? null,
             'resultUrl' => route('examinations.result', $examination),
             'questions' => $questions->values()->all(),
             'monitoring' => $monitoring,

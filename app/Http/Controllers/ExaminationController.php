@@ -16,6 +16,7 @@ use App\Models\YearLevel;
 use App\Http\Requests\ConfirmQuestionCsvRequest;
 use App\Services\AuditLogger;
 use App\Services\Examinations\ExaminationSectionService;
+use App\Services\Examinations\ExaminationScheduleService;
 use App\Services\Questions\ExaminationQuestionService;
 use App\Services\Questions\QuestionCsvImporter;
 use App\Services\Students\SubjectOfferingService;
@@ -37,6 +38,7 @@ class ExaminationController extends Controller
         protected ExaminationSectionService $sections,
         protected ExaminationQuestionService $questions,
         protected SubjectOfferingService $offerings,
+        protected ExaminationScheduleService $schedule,
     ) {
     }
 
@@ -83,6 +85,8 @@ class ExaminationController extends Controller
             if (! empty($data['questions'])) {
                 $this->questions->sync($examination, $data['questions'], $request->user()->instructor?->id);
             }
+
+            $this->schedule->syncSchedule($examination, $data, $status !== ExamStatus::Draft);
 
             return $examination->load('sections');
         });
@@ -134,6 +138,8 @@ class ExaminationController extends Controller
             if (array_key_exists('questions', $data)) {
                 $this->questions->sync($examination, $data['questions'] ?? [], $request->user()->instructor?->id);
             }
+
+            $this->schedule->syncSchedule($examination, $data, in_array($status, [ExamStatus::Published, ExamStatus::Active, ExamStatus::Scheduled], true));
         });
 
         $examination->refresh()->load('sections');
@@ -350,6 +356,12 @@ class ExaminationController extends Controller
                 'allowPendingOfflineSubmission' => old('allow_pending_offline_submission', $examination?->settings?->allow_pending_offline_submission ?? true),
                 'maxOfflineDuration' => old('max_offline_duration_minutes', $examination?->settings?->max_offline_duration_minutes ?? 30),
                 'syncGracePeriod' => old('sync_grace_period_minutes', $examination?->settings?->sync_grace_period_minutes ?? 15),
+                'availabilityImmediate' => old('availability_immediate', $examination ? ! $examination->available_from || $examination->available_from->lessThanOrEqualTo($examination->created_at?->addMinute() ?? now()) : true),
+                'availableFromDate' => old('available_from_date', $examination?->available_from?->format('Y-m-d')),
+                'availableFromTime' => old('available_from_time', $examination?->available_from?->format('H:i')),
+                'deadlineDate' => old('deadline_date', $examination?->deadline_at?->format('Y-m-d')),
+                'deadlineTime' => old('deadline_time', $examination?->deadline_at?->format('H:i')),
+                'deadlinePolicy' => old('deadline_policy', $examination?->deadline_policy?->value ?? 'allow_active_finish'),
             ],
             'errors' => $request->session()->get('errors')?->getBag('default')->toArray() ?? [],
         ];
@@ -388,7 +400,7 @@ class ExaminationController extends Controller
 
     protected function savedMessage(Examination $examination): string
     {
-        return $examination->status === ExamStatus::Published
+        return in_array($examination->status, [ExamStatus::Published, ExamStatus::Active, ExamStatus::Scheduled], true)
             ? 'Examination published.'
             : 'Examination saved successfully.';
     }

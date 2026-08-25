@@ -216,6 +216,7 @@ class PlatformController extends Controller
             'questions' => $questions,
             'remaining' => $attemptState['remaining_seconds'] ?? ($durationMinutes * 60),
             'attemptState' => $attemptState,
+            'schedule' => app(\App\Services\Examinations\ExaminationScheduleService::class)->schedulePayload($examination),
             'policyVersion' => config('examination.policy_version', '1.0'),
             'maxWarnings' => config('examination.max_violation_warnings', 3),
             'monitoring' => [

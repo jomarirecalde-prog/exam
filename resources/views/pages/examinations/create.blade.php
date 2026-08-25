@@ -253,6 +253,54 @@
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded border-line text-navy-800" x-model="form.autoSubmit"> Auto-submit when time expires</label>
 
                         <div class="sm:col-span-2 mt-2 rounded-card border border-line bg-canvas p-4">
+                            <p class="text-sm font-medium text-ink">Examination Availability</p>
+                            <p class="mt-1 text-xs text-muted">Control when students can start and when the examination closes.</p>
+
+                            <div class="mt-4 space-y-3">
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="radio" class="border-line text-navy-800" value="immediate" x-model="availabilityMode">
+                                    Available Immediately
+                                </label>
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="radio" class="border-line text-navy-800" value="scheduled" x-model="availabilityMode">
+                                    Schedule Availability
+                                </label>
+                            </div>
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2" x-show="availabilityMode === 'scheduled'" x-cloak>
+                                <x-ui.field label="Available From — Date" for="availableFromDate">
+                                    <input class="ui-input" id="availableFromDate" type="date" x-model="form.availableFromDate">
+                                </x-ui.field>
+                                <x-ui.field label="Available From — Time" for="availableFromTime">
+                                    <input class="ui-input" id="availableFromTime" type="time" x-model="form.availableFromTime">
+                                </x-ui.field>
+                            </div>
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                                <x-ui.field label="Examination Deadline — Date" for="deadlineDate" help="Students can only start the examination before this deadline.">
+                                    <input class="ui-input" id="deadlineDate" type="date" x-model="form.deadlineDate">
+                                </x-ui.field>
+                                <x-ui.field label="Examination Deadline — Time" for="deadlineTime">
+                                    <input class="ui-input" id="deadlineTime" type="time" x-model="form.deadlineTime">
+                                </x-ui.field>
+                            </div>
+
+                            <div class="mt-4">
+                                <p class="text-sm font-medium text-ink">When the Examination Deadline Is Reached</p>
+                                <div class="mt-3 space-y-3">
+                                    <label class="flex items-start gap-2 text-sm">
+                                        <input type="radio" class="mt-1 border-line text-navy-800" value="stop_all" x-model="form.deadlinePolicy">
+                                        <span><span class="font-medium">Automatically End and Submit Active Examinations</span><span class="mt-1 block text-muted">All active attempts are ended and submitted using their latest saved answers.</span></span>
+                                    </label>
+                                    <label class="flex items-start gap-2 text-sm">
+                                        <input type="radio" class="mt-1 border-line text-navy-800" value="allow_active_finish" x-model="form.deadlinePolicy">
+                                        <span><span class="font-medium">Allow Active Students to Complete Their Remaining Time</span><span class="mt-1 block text-muted">New students cannot start after the deadline, but active students may finish their individual timer.</span></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="sm:col-span-2 mt-2 rounded-card border border-line bg-canvas p-4">
                             <p class="text-sm font-medium text-ink">Offline Examination Mode</p>
                             <p class="mt-1 text-xs text-muted">Configure whether students can continue after losing internet connection.</p>
                             <select class="ui-input mt-3" x-model="form.offlineMode">
@@ -408,6 +456,8 @@
                             <span class="font-medium" x-text="selectedSections.map((item) => item.name).join(', ') || '—'"></span>
                         </p>
                         <p><span class="text-muted">Duration</span> · <span class="font-medium" x-text="form.duration + ' minutes'"></span></p>
+                        <p><span class="text-muted">Available From</span> · <span class="font-medium" x-text="availabilityMode === 'immediate' ? 'Immediately' : ((form.availableFromDate || '—') + ' ' + (form.availableFromTime || ''))"></span></p>
+                        <p><span class="text-muted">Deadline</span> · <span class="font-medium" x-text="(form.deadlineDate || '—') + ' ' + (form.deadlineTime || '')"></span></p>
                         <p><span class="text-muted">Questions</span> · <span class="font-medium" x-text="questions.length"></span></p>
                         <p><span class="text-muted">Passing</span> · <span class="font-medium" x-text="form.passing + '%'"></span></p>
                     </x-ui.card>

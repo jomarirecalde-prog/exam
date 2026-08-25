@@ -115,6 +115,63 @@
     </div>
 </div>
 
+{{-- End examination modal --}}
+<div x-show="endExamOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+    <div class="absolute inset-0 bg-navy-950/50" @click="endExamOpen = false"></div>
+    <div class="relative w-full max-w-lg rounded-modal border border-line bg-surface p-6 shadow-pop">
+        <h2 class="text-lg font-semibold">End Examination?</h2>
+        <p class="mt-2 text-sm text-muted">You are about to end:</p>
+        <p class="mt-1 font-medium" x-text="selectedExam?.title"></p>
+        <p class="text-sm text-muted" x-text="selectedExam?.subject"></p>
+        <p class="mt-4 text-sm">Students Currently Taking the Exam: <span class="font-semibold" x-text="summary.taking_exam ?? 0"></span></p>
+        <p class="mt-2 text-sm text-muted">This action may immediately stop active examination attempts.</p>
+        <fieldset class="mt-5 space-y-2">
+            <legend class="text-sm font-medium">Choose what should happen to students who are currently taking the examination.</legend>
+            <label class="flex items-start gap-2 text-sm"><input type="radio" class="mt-1" value="auto_submit" x-model="endPolicy"> End and automatically submit their current answers.</label>
+            <label class="flex items-start gap-2 text-sm"><input type="radio" class="mt-1" value="save_for_review" x-model="endPolicy"> End and save their examination for instructor review.</label>
+        </fieldset>
+        <div class="mt-4" x-show="endOfflineStudents > 0" x-cloak>
+            <p class="text-sm font-medium text-warning-ink">Offline Students</p>
+            <p class="mt-1 text-sm text-muted">Some students are currently offline. The examination end instruction will be applied when their device reconnects and synchronizes.</p>
+            <p class="mt-2 text-sm">Number of Offline Students: <span class="font-semibold" x-text="endOfflineStudents"></span></p>
+        </div>
+        <x-ui.field label="Reason for Ending Examination" for="endReason" class="mt-4">
+            <input class="ui-input" id="endReason" type="text" placeholder="Class schedule has ended." x-model="endReason">
+        </x-ui.field>
+        <p class="mt-3 text-sm text-danger-ink" x-show="endExamError" x-text="endExamError"></p>
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="btn-secondary" @click="endExamOpen = false" :disabled="endExamSubmitting">Cancel</button>
+            <button type="button" class="btn-secondary text-danger-ink" @click="submitEndExamination()" :disabled="endExamSubmitting">End Examination</button>
+        </div>
+    </div>
+</div>
+
+{{-- Extend deadline modal --}}
+<div x-show="extendDeadlineOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+    <div class="absolute inset-0 bg-navy-950/50" @click="extendDeadlineOpen = false"></div>
+    <div class="relative w-full max-w-lg rounded-modal border border-line bg-surface p-6 shadow-pop">
+        <h2 class="text-lg font-semibold">Update Examination Deadline</h2>
+        <p class="mt-3 text-sm text-muted">Current Deadline:</p>
+        <p class="font-medium" x-text="examination?.deadline_at_formatted || '—'"></p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <x-ui.field label="New Deadline — Date" for="newDeadlineDate">
+                <input class="ui-input" id="newDeadlineDate" type="date" x-model="newDeadlineDate">
+            </x-ui.field>
+            <x-ui.field label="New Deadline — Time" for="newDeadlineTime">
+                <input class="ui-input" id="newDeadlineTime" type="time" x-model="newDeadlineTime">
+            </x-ui.field>
+        </div>
+        <x-ui.field label="Reason for Change" for="extendReason" class="mt-4">
+            <input class="ui-input" id="extendReason" type="text" x-model="extendReason">
+        </x-ui.field>
+        <p class="mt-3 text-sm text-danger-ink" x-show="extendDeadlineError" x-text="extendDeadlineError"></p>
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="btn-secondary" @click="extendDeadlineOpen = false" :disabled="extendDeadlineSubmitting">Cancel</button>
+            <button type="button" class="btn-primary" @click="submitExtendDeadline()" :disabled="extendDeadlineSubmitting">Update Deadline</button>
+        </div>
+    </div>
+</div>
+
 <div class="pointer-events-none fixed bottom-4 right-4 z-50 space-y-2" x-show="notifications.length > 0">
     <template x-for="note in notifications" :key="note.id">
         <div

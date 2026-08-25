@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AttemptFinalizationStatus;
 use App\Enums\AttemptStatus;
 use App\Enums\SubmissionMode;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,8 @@ class ExaminationAttempt extends Model
 {
     protected $fillable = [
         'uuid', 'attempt_code', 'examination_id', 'examination_version_id', 'student_id',
-        'attempt_number', 'started_at', 'submitted_at', 'expires_at', 'duration_seconds',
+        'attempt_number', 'started_at', 'submitted_at', 'ended_at', 'ended_reason', 'finalization_status',
+        'expires_at', 'duration_seconds',
         'status', 'score', 'percentage', 'passed', 'submission_mode', 'sync_status',
         'device_info', 'ip_address', 'tab_switch_count', 'suspicious_activity_count', 'question_order',
         'warning_count', 'policy_accepted_at', 'policy_version', 'locked_at', 'lock_reason',
@@ -27,9 +29,11 @@ class ExaminationAttempt extends Model
     {
         return [
             'status' => AttemptStatus::class,
+            'finalization_status' => AttemptFinalizationStatus::class,
             'submission_mode' => SubmissionMode::class,
             'started_at' => 'datetime',
             'submitted_at' => 'datetime',
+            'ended_at' => 'datetime',
             'expires_at' => 'datetime',
             'policy_accepted_at' => 'datetime',
             'locked_at' => 'datetime',

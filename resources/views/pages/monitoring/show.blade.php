@@ -11,6 +11,10 @@
             'subject' => $examination->subject?->name ?? $examination->subject?->code,
             'sections' => $sections,
             'dataUrl' => route('monitoring.data', $examination),
+            'controlUrl' => route('monitoring.control', $examination),
+            'endUrl' => route('monitoring.end', $examination),
+            'extendDeadlineUrl' => route('monitoring.extend-deadline', $examination),
+            'editUrl' => route('examinations.edit', $examination),
         ],
         'backUrl' => route('monitoring.index'),
         'violationsUrl' => route('monitoring.violations', ['attempt' => '__ATTEMPT__']),
@@ -32,6 +36,29 @@
         </p>
 
         <div class="space-y-6">
+            <section class="ui-card ui-card-pad">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Examination Status</p>
+                        <p class="mt-2 flex items-center gap-2 text-lg font-semibold text-ink">
+                            <span class="h-2.5 w-2.5 rounded-full" :class="examination?.is_live ? 'bg-success-ink animate-pulse' : 'bg-muted'"></span>
+                            <span x-text="examination?.status_label || '—'"></span>
+                        </p>
+                        <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                            <div><dt class="text-muted">Available From</dt><dd class="font-medium" x-text="examination?.available_from_formatted || '—'"></dd></div>
+                            <div><dt class="text-muted">Deadline</dt><dd class="font-medium" x-text="examination?.deadline_at_formatted || '—'"></dd></div>
+                            <div><dt class="text-muted">Time Remaining Until Deadline</dt><dd class="font-medium tabular-nums" x-text="deadlineCountdownLabel"></dd></div>
+                            <div><dt class="text-muted">Duration</dt><dd class="font-medium" x-text="(examination?.duration_minutes || 0) + ' minutes per student'"></dd></div>
+                        </dl>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a :href="selectedExam?.editUrl" class="btn-secondary">Edit Examination</a>
+                        <button type="button" class="btn-secondary" x-show="control?.can_extend_deadline" @click="openExtendDeadline()" x-cloak>Extend Deadline</button>
+                        <button type="button" class="btn-secondary text-danger-ink" x-show="control?.can_end" @click="openEndExamination()" x-cloak>End Examination</button>
+                    </div>
+                </div>
+            </section>
+
             <section>
                 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                     @foreach ([

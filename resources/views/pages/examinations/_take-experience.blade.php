@@ -84,6 +84,21 @@
         </div>
     </template>
 
+    <template x-if="phase === 'ended'">
+        <div class="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-4 py-10 sm:px-6">
+            <div class="rounded-modal border border-line bg-surface p-8 text-center shadow-pop">
+                <p class="text-xs font-semibold uppercase tracking-wider text-muted">Examination Ended</p>
+                <h1 class="mt-3 text-2xl font-semibold">Examination Ended</h1>
+                <p class="mt-4 text-sm leading-6 text-muted" x-text="examEndedMessage || 'This examination has been ended by your instructor.'"></p>
+                <p class="mt-4 text-sm text-muted">Your latest saved answers have been recorded.</p>
+                <p class="mt-2 text-sm font-medium text-ink">Status: <span x-text="finalizationStatus === 'pending_review' ? 'Saved for Review' : 'Submitted'"></span></p>
+                <div class="mt-8">
+                    <a :href="resultUrl" class="btn-primary">View Result</a>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <template x-if="phase === 'locked'">
         <div class="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-4 py-10 sm:px-6">
             <div class="rounded-modal border border-danger/30 bg-surface p-8 text-center shadow-pop">
@@ -115,6 +130,12 @@
 
     <template x-if="phase === 'active'">
         <div class="flex min-h-screen flex-col">
+            <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-4 py-4 sm:px-6">
+                <div class="rounded-card border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning-ink" x-show="showDeadlineWarning" x-cloak>
+                    <p class="font-semibold">Important</p>
+                    <p class="mt-1">This examination will automatically end at <span x-text="deadlineLabel"></span>. Make sure to submit your answers before the deadline.</p>
+                </div>
+            </div>
             <header class="sticky top-0 z-20 border-b border-line bg-surface">
                 <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
                     <div class="min-w-0">

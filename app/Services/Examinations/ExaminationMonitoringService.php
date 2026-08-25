@@ -32,7 +32,7 @@ class ExaminationMonitoringService
     {
         $this->assertCanMonitor($user, $examination);
 
-        $examination->loadMissing(['subject', 'sections', 'subjectOffering.section']);
+        $examination->loadMissing(['subject', 'sections', 'subjectOffering.section', 'endedBy']);
 
         $totalQuestions = $this->resolveExamQuestionCount($examination);
         $students = $this->buildStudentRows($examination, $totalQuestions);
@@ -268,9 +268,24 @@ class ExaminationMonitoringService
                 'occurred_at_label' => $attempt->submitted_at?->format('g:i:s A'),
             ]);
 
+        $endEvents = collect();
+
+        if ($examination->ended_at) {
+            $endEvents->push([
+                'id' => 'exam-ended-'.$examination->id,
+                'type' => 'examination_ended',
+                'severity' => 'critical',
+                'student_name' => $examination->endedBy?->name ?? 'Instructor',
+                'message' => 'ended the examination'.($examination->end_reason ? ': '.$examination->end_reason : ''),
+                'occurred_at' => $examination->ended_at->toIso8601String(),
+                'occurred_at_label' => $examination->ended_at->format('g:i A'),
+            ]);
+        }
+
         return $violations
             ->concat($syncEvents)
             ->concat($attemptEvents)
+            ->concat($endEvents)
             ->filter(fn (array $item) => ! empty($item['occurred_at']))
             ->sortByDesc('occurred_at')
             ->unique('id')
@@ -357,7 +372,9 @@ class ExaminationMonitoringService
             ?: $examination->subjectOffering?->section?->name
             ?: 'Unassigned';
 
-        $isLive = in_array($examination->status, [ExamStatus::Active, ExamStatus::Published], true);
+        $isLive = in_array($examination->status, [ExamStatus::Active, ExamStatus::Published, ExamStatus::Scheduled], true);
+
+        $schedule = app(ExaminationScheduleService::class);
 
         return [
             'id' => $examination->id,
@@ -366,11 +383,12 @@ class ExaminationMonitoringService
             'subject_code' => $examination->subject?->code,
             'sections' => $sections,
             'status' => $examination->status->value,
-            'status_label' => $isLive ? 'LIVE' : $examination->status->value,
+            'status_label' => $examination->status->label(),
             'is_live' => $isLive,
             'students_taking' => $summary['taking_exam'] + $summary['offline'],
             'students_total' => $summary['total'],
             'duration_minutes' => (int) ($examination->duration_minutes ?: config('examination.default_duration_minutes', 60)),
+            ...$schedule->schedulePayload($examination),
         ];
     }
 

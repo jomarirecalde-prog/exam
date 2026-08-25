@@ -26,6 +26,29 @@ class ExamAttemptSyncService
     {
         $this->offlinePrep->assertDeviceAuthorized($attempt, $deviceIdentifier);
 
+        $attempt->loadMissing('examination');
+
+        if ($attempt->status === AttemptStatus::InProgress) {
+            app(ExaminationEndService::class)->syncEndedExaminationForAttempt($attempt);
+            $attempt = $attempt->fresh();
+
+            if ($attempt->status !== AttemptStatus::InProgress) {
+                return [
+                    'processed' => 0,
+                    'duplicates' => 0,
+                    'conflicts' => [],
+                    'results' => [],
+                    'attempt' => $this->attempts->attemptState($attempt),
+                    'examination_ended' => true,
+                ];
+            }
+        }
+
+        return $this->syncEventsInternal($attempt, $events, $deviceIdentifier);
+    }
+
+    protected function syncEventsInternal(ExaminationAttempt $attempt, array $events, string $deviceIdentifier): array
+    {
         $results = [];
         $conflicts = [];
 

@@ -65,7 +65,7 @@ class ExaminationSectionAssignmentTest extends TestCase
 
         $this->assertNotNull($exam);
         $this->assertFalse($exam->needs_section_review);
-        $this->assertEquals(ExamStatus::Published, $exam->status);
+        $this->assertEquals(ExamStatus::Active, $exam->status);
         $this->assertEquals([$structure['sectionA']->id], $exam->sections()->pluck('sections.id')->all());
     }
 
@@ -488,6 +488,10 @@ class ExaminationSectionAssignmentTest extends TestCase
             'randomize_questions' => true,
             'allow_back_navigation' => true,
             'auto_submit_on_expire' => true,
+            'availability_immediate' => true,
+            'deadline_date' => now()->addDay()->format('Y-m-d'),
+            'deadline_time' => '23:59',
+            'deadline_policy' => 'allow_active_finish',
             'examination_date' => now()->toDateString(),
             'start_time' => '08:00',
             'end_time' => '10:00',

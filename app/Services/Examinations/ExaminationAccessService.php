@@ -19,6 +19,7 @@ class ExaminationAccessService
 {
     public function __construct(
         protected StudentSubjectEnrollmentService $subjectEnrollments,
+        protected ExaminationScheduleService $schedule,
     ) {}
 
     public function canManage(User $user, ?Examination $examination = null): bool
@@ -62,8 +63,9 @@ class ExaminationAccessService
         }
 
         if ($this->hasInProgressAttempt($student, $examination)) {
-            return $this->studentAuthorizedForExamination($student, $examination)
-                || $this->hasAttemptHistory($student, $examination);
+            return $this->schedule->canContinueActiveAttempt($examination)
+                && ($this->studentAuthorizedForExamination($student, $examination)
+                || $this->hasAttemptHistory($student, $examination));
         }
 
         if ($this->hasLockedAttempt($student, $examination)) {
@@ -84,6 +86,14 @@ class ExaminationAccessService
         }
 
         if (! $this->isCurrentlyAvailable($examination)) {
+            return false;
+        }
+
+        if (! $this->schedule->canStartNewAttempt($examination) && ! $this->hasResumableNotStartedAttempt($student, $examination)) {
+            if ($this->hasInProgressAttempt($student, $examination)) {
+                return $this->schedule->canContinueActiveAttempt($examination);
+            }
+
             return false;
         }
 
@@ -139,7 +149,11 @@ class ExaminationAccessService
         }
 
         if (! $this->isCurrentlyAvailable($examination)) {
-            return 'This examination is not currently open.';
+            return $this->schedule->denyStartReason($examination);
+        }
+
+        if (! $this->schedule->canStartNewAttempt($examination) && ! $this->hasInProgressAttempt($student, $examination)) {
+            return $this->schedule->denyStartReason($examination);
         }
 
         if ($this->hasExceededAttempts($student, $examination)) {
@@ -360,15 +374,26 @@ class ExaminationAccessService
 
     public function isPublishedForStudents(Examination $examination): bool
     {
-        return in_array($examination->status, [
-            ExamStatus::Published,
-            ExamStatus::Active,
-        ], true);
+        return $examination->status->isStudentVisible();
     }
 
     public function isCurrentlyAvailable(Examination $examination): bool
     {
-        return $this->isPublishedForStudents($examination);
+        $examination = $this->schedule->refreshExaminationStatus($examination);
+
+        if (! $this->isPublishedForStudents($examination)) {
+            return false;
+        }
+
+        if (in_array($examination->status, [ExamStatus::Ended, ExamStatus::Closed, ExamStatus::Expired], true)) {
+            return false;
+        }
+
+        if ($this->schedule->isBeforeStart($examination)) {
+            return false;
+        }
+
+        return true;
     }
 
     public function hasExceededAttempts(Student $student, Examination $examination): bool

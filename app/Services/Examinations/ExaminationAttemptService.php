@@ -20,6 +20,7 @@ class ExaminationAttemptService
 {
     public function __construct(
         protected ExaminationAccessService $access,
+        protected ExaminationScheduleService $schedule,
         protected GradingEngine $grading,
         protected ?OfflineExamPreparationService $offlinePrep = null,
     ) {}
@@ -101,15 +102,28 @@ class ExaminationAttemptService
             }
 
             if ($attempt->status === AttemptStatus::InProgress) {
-                return $attempt->fresh(['answers']);
+                app(ExaminationEndService::class)->syncEndedExaminationForAttempt($attempt->fresh());
+                $attempt = $attempt->fresh(['answers']);
+
+                if ($attempt->status !== AttemptStatus::InProgress) {
+                    return $attempt;
+                }
+
+                return $attempt;
             }
 
+            if (! $this->schedule->canStartNewAttempt($examination)) {
+                throw new InvalidArgumentException($this->schedule->denyStartReason($examination));
+            }
+
+            $startedAt = now();
             $durationMinutes = max(1, (int) ($examination->duration_minutes ?: config('examination.default_duration_minutes', 60)));
+            $expiresAt = $this->schedule->effectiveExpiresAt($examination, $startedAt);
 
             $attempt->update([
                 'status' => AttemptStatus::InProgress,
-                'started_at' => now(),
-                'expires_at' => now()->addMinutes($durationMinutes),
+                'started_at' => $startedAt,
+                'expires_at' => $expiresAt,
                 'duration_seconds' => $durationMinutes * 60,
                 'ip_address' => request()->ip(),
                 'current_question_index' => 1,
@@ -213,7 +227,11 @@ class ExaminationAttemptService
      */
     public function attemptState(ExaminationAttempt $attempt): array
     {
-        $attempt->loadMissing(['answers', 'violations' => fn ($q) => $q->latest('detected_at')]);
+        $attempt->loadMissing(['answers', 'violations' => fn ($q) => $q->latest('detected_at'), 'examination']);
+
+        $examination = $attempt->examination;
+        app(ExaminationEndService::class)->syncEndedExaminationForAttempt($attempt);
+        $attempt = $attempt->fresh(['answers', 'violations', 'examination']);
 
         return [
             'attempt_id' => $attempt->id,
@@ -234,6 +252,16 @@ class ExaminationAttemptService
             'last_synced_at' => $attempt->last_synced_at?->toIso8601String(),
             'pending_submission_at' => $attempt->pending_submission_at?->toIso8601String(),
             'offline_timing_token' => $attempt->offline_timing_token,
+            'ended_at' => $attempt->ended_at?->toIso8601String(),
+            'ended_reason' => $attempt->ended_reason,
+            'finalization_status' => $attempt->finalization_status?->value,
+            'examination_ended' => in_array($examination->status, [\App\Enums\ExamStatus::Ended, \App\Enums\ExamStatus::Closed], true),
+            'examination_end_message' => $attempt->ended_reason === 'instructor_ended'
+                ? 'This examination has been ended by your instructor.'
+                : ($attempt->ended_reason === 'deadline_reached'
+                    ? 'This examination has ended because the deadline was reached.'
+                    : null),
+            'schedule' => app(ExaminationScheduleService::class)->schedulePayload($examination),
             'answers' => $attempt->answers->mapWithKeys(function (StudentAnswer $answer) {
                 $value = $answer->answer['value'] ?? $answer->answer;
 
@@ -331,6 +359,14 @@ class ExaminationAttemptService
     {
         if ($attempt->status !== AttemptStatus::InProgress) {
             throw new InvalidArgumentException('This examination attempt is not active.');
+        }
+
+        $attempt->loadMissing('examination');
+        $examination = $attempt->examination;
+
+        if (! app(ExaminationScheduleService::class)->canContinueActiveAttempt($examination)) {
+            app(ExaminationEndService::class)->syncEndedExaminationForAttempt($attempt->fresh());
+            throw new InvalidArgumentException('This examination has ended.');
         }
 
         if ($attempt->expires_at && now()->greaterThan($attempt->expires_at)) {

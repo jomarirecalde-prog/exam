@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\ExamDeadlinePolicy;
+use App\Enums\ExamEndPolicy;
 use App\Enums\ExaminationAccessMode;
 use App\Enums\ExaminationPeriod;
 use App\Enums\ExamStatus;
@@ -22,8 +24,10 @@ class Examination extends Model
         'uuid', 'code', 'subject_id', 'subject_offering_id', 'section_id', 'instructor_id',
         'academic_year_id', 'semester_id', 'examination_period', 'title',
         'description', 'instructions', 'duration_minutes', 'total_items',
-        'passing_score', 'passing_percentage', 'examination_date',
-        'start_time', 'end_time', 'status', 'needs_section_review', 'access_mode', 'current_version',
+        'passing_score', 'passing_percentage',         'examination_date',
+        'start_time', 'end_time', 'available_from', 'deadline_at', 'deadline_policy',
+        'ended_at', 'ended_by_user_id', 'end_reason', 'end_policy',
+        'status', 'needs_section_review', 'access_mode', 'current_version',
     ];
 
     protected function casts(): array
@@ -32,7 +36,12 @@ class Examination extends Model
             'examination_period' => ExaminationPeriod::class,
             'access_mode' => ExaminationAccessMode::class,
             'status' => ExamStatus::class,
+            'deadline_policy' => ExamDeadlinePolicy::class,
+            'end_policy' => ExamEndPolicy::class,
             'examination_date' => 'date',
+            'available_from' => 'datetime',
+            'deadline_at' => 'datetime',
+            'ended_at' => 'datetime',
             'passing_score' => 'decimal:2',
             'passing_percentage' => 'decimal:2',
             'needs_section_review' => 'boolean',
@@ -72,6 +81,11 @@ class Examination extends Model
     public function instructor(): BelongsTo
     {
         return $this->belongsTo(Instructor::class);
+    }
+
+    public function endedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'ended_by_user_id');
     }
 
     public function academicYear(): BelongsTo
@@ -167,6 +181,7 @@ class Examination extends Model
             ->whereIn('status', [
                 ExamStatus::Published,
                 ExamStatus::Active,
+                ExamStatus::Scheduled,
             ])
             ->where(function (Builder $query) use ($student) {
                 $accessService = app(\App\Services\Examinations\ExaminationAccessService::class);

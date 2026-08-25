@@ -513,7 +513,13 @@ window.examWizard = function examWizard(config = {}) {
             allowPendingOfflineSubmission: incomingForm.allowPendingOfflineSubmission ?? true,
             maxOfflineDuration: incomingForm.maxOfflineDuration ?? 30,
             syncGracePeriod: incomingForm.syncGracePeriod ?? 15,
+            availableFromDate: incomingForm.availableFromDate || '',
+            availableFromTime: incomingForm.availableFromTime || '',
+            deadlineDate: incomingForm.deadlineDate || '',
+            deadlineTime: incomingForm.deadlineTime || '',
+            deadlinePolicy: incomingForm.deadlinePolicy || 'allow_active_finish',
         },
+        availabilityMode: incomingForm.availabilityImmediate === false ? 'scheduled' : 'immediate',
         init() {
             if (this.filtersReady()) {
                 this.fetchSections({ prune: false });
@@ -759,6 +765,39 @@ window.examWizard = function examWizard(config = {}) {
             this.errors = errors;
             return Object.keys(errors).length === 0;
         },
+        validateSettings() {
+            const errors = {};
+            if (this.availabilityMode === 'scheduled') {
+                if (!this.form.availableFromDate) {
+                    errors.available_from_date = 'Please set when the examination becomes available.';
+                }
+                if (!this.form.availableFromTime) {
+                    errors.available_from_time = 'Please set the availability start time.';
+                }
+            }
+            this.errors = errors;
+            return Object.keys(errors).length === 0;
+        },
+        validateReview() {
+            const errors = {};
+            if (!this.form.deadlineDate) {
+                errors.deadline_date = 'Please set an examination deadline before publishing.';
+            }
+            if (!this.form.deadlinePolicy) {
+                errors.deadline_policy = 'Please select what happens when the examination deadline is reached.';
+            }
+            if (this.form.deadlineDate) {
+                const start = this.availabilityMode === 'immediate'
+                    ? new Date()
+                    : new Date(`${this.form.availableFromDate}T${this.form.availableFromTime || '00:00'}`);
+                const deadline = new Date(`${this.form.deadlineDate}T${this.form.deadlineTime || '23:59'}`);
+                if (!Number.isNaN(start.getTime()) && !Number.isNaN(deadline.getTime()) && deadline <= start) {
+                    errors.deadline_date = 'The examination deadline must be after the availability start date and time.';
+                }
+            }
+            this.errors = errors;
+            return Object.keys(errors).length === 0;
+        },
         payload(status) {
             return {
                 title: this.form.title,
@@ -783,6 +822,12 @@ window.examWizard = function examWizard(config = {}) {
                 allow_pending_offline_submission: Boolean(this.form.allowPendingOfflineSubmission),
                 max_offline_duration_minutes: this.form.offlineMode === 'disabled' ? null : Number(this.form.maxOfflineDuration) || null,
                 sync_grace_period_minutes: Number(this.form.syncGracePeriod) || 15,
+                availability_immediate: this.availabilityMode === 'immediate',
+                available_from_date: this.availabilityMode === 'scheduled' ? this.form.availableFromDate : null,
+                available_from_time: this.availabilityMode === 'scheduled' ? this.form.availableFromTime : null,
+                deadline_date: this.form.deadlineDate || null,
+                deadline_time: this.form.deadlineTime || null,
+                deadline_policy: this.form.deadlinePolicy,
                 status,
                 questions: this.questions.map(({ id, ...question }) => question),
             };
@@ -817,6 +862,9 @@ window.examWizard = function examWizard(config = {}) {
             if (this.step === 1 && !this.validateInformation()) {
                 return;
             }
+            if (this.step === 2 && !this.validateSettings()) {
+                return;
+            }
             this.step = Math.min(4, this.step + 1);
         },
         back() {
@@ -831,6 +879,16 @@ window.examWizard = function examWizard(config = {}) {
         async persist(status) {
             if (!this.validateInformation()) {
                 this.step = 1;
+                window.appToast(this.firstError(), 'error');
+                return;
+            }
+            if (!this.validateSettings()) {
+                this.step = 2;
+                window.appToast(this.firstError(), 'error');
+                return;
+            }
+            if (status === 'PUBLISHED' && !this.validateReview()) {
+                this.step = 4;
                 window.appToast(this.firstError(), 'error');
                 return;
             }
@@ -1089,6 +1147,10 @@ window.examTaking = function examTaking(config) {
         subjectCode: config.subjectCode || '',
         lastSavedAt: '',
         bootstrapError: '',
+        schedule: config.schedule || null,
+        examEndedMessage: '',
+        finalizationStatus: initialAttempt?.finalization_status || '',
+        statePollTimer: null,
 
         async init() {
             if (this.offlineOnly) {
@@ -1382,6 +1444,7 @@ window.examTaking = function examTaking(config) {
         async onExamActive() {
             localStorage.setItem('exam-active-session', '1');
             this.startTimer();
+            this.startStatePolling();
             this.bindMonitoring();
             if (this.attemptId && this.timingToken) {
                 this.timerState = createTimerState({
@@ -1404,6 +1467,81 @@ window.examTaking = function examTaking(config) {
                     : 'Answers are being synchronized';
             }
             return 'Your answers are safely saved on this device and will synchronize when the connection returns.';
+        },
+
+        get deadlineLabel() {
+            return this.schedule?.deadline_at_formatted || '';
+        },
+
+        get showDeadlineWarning() {
+            return this.schedule?.deadline_policy === 'stop_all' && Boolean(this.schedule?.deadline_at);
+        },
+
+        get deadlineCountdown() {
+            const seconds = this.schedule?.deadline_remaining_seconds;
+            if (seconds == null) {
+                return '';
+            }
+            const minutes = Math.floor(seconds / 60);
+            const remaining = seconds % 60;
+            return `${minutes}:${String(remaining).padStart(2, '0')}`;
+        },
+
+        startStatePolling() {
+            if (!this.urls.state || this.offlineOnly) {
+                return;
+            }
+            if (this.statePollTimer) {
+                clearInterval(this.statePollTimer);
+            }
+            this.statePollTimer = setInterval(() => this.pollAttemptState(), 5000);
+        },
+
+        stopStatePolling() {
+            if (this.statePollTimer) {
+                clearInterval(this.statePollTimer);
+                this.statePollTimer = null;
+            }
+        },
+
+        async pollAttemptState() {
+            if (this.phase !== 'active' || !this.networkOnline) {
+                return;
+            }
+            try {
+                const data = await api(this.urls.state);
+                if (!data.attempt) {
+                    return;
+                }
+                if (data.attempt.schedule) {
+                    this.schedule = data.attempt.schedule;
+                }
+                if (data.attempt.examination_ended || ['SUBMITTED', 'AUTO_SUBMITTED', 'EXPIRED'].includes(data.attempt.status)) {
+                    await this.handleExaminationEnded(data.attempt);
+                }
+            } catch {
+                /* polling should not interrupt the exam */
+            }
+        },
+
+        async handleExaminationEnded(attempt) {
+            if (this.phase === 'ended') {
+                return;
+            }
+            this.stopStatePolling();
+            if (this.timerId) {
+                clearInterval(this.timerId);
+            }
+            try {
+                await this.persistAnswers();
+            } catch {
+                /* preserve whatever is already saved */
+            }
+            this.hydrateFromAttempt(attempt);
+            this.examEndedMessage = attempt.examination_end_message
+                || 'This examination has been ended by your instructor.';
+            this.finalizationStatus = attempt.finalization_status || attempt.status;
+            this.phase = 'ended';
         },
 
         get saveStatusLabel() {
@@ -1583,6 +1721,13 @@ window.examTaking = function examTaking(config) {
             this.timingToken = attempt.offline_timing_token || this.timingToken;
             if (attempt.pending_submission_at) {
                 this.pendingSubmission = true;
+            }
+            if (attempt.schedule) {
+                this.schedule = attempt.schedule;
+            }
+            if (attempt.examination_ended) {
+                void this.handleExaminationEnded(attempt);
+                return;
             }
             if (this.attemptId && this.urls.syncTemplate) {
                 this.syncUrl = this.urls.syncTemplate.replace('__ATTEMPT__', this.attemptId);
@@ -2418,6 +2563,32 @@ window.examMonitoring = function examMonitoring(config) {
         attemptUrlTemplate: config.attemptUrl,
         notifications: [],
         knownStates: {},
+        control: null,
+        endExamOpen: false,
+        endPolicy: 'auto_submit',
+        endReason: '',
+        endExamError: '',
+        endExamSubmitting: false,
+        endOfflineStudents: 0,
+        extendDeadlineOpen: false,
+        newDeadlineDate: '',
+        newDeadlineTime: '',
+        extendReason: '',
+        extendDeadlineError: '',
+        extendDeadlineSubmitting: false,
+
+        get deadlineCountdownLabel() {
+            const seconds = this.examination?.deadline_remaining_seconds;
+            if (seconds == null) {
+                return '—';
+            }
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours}h ${minutes}m remaining`;
+            }
+            return `${minutes}m remaining`;
+        },
 
         init() {
             if (!this.selectedExam?.dataUrl) {
@@ -2425,7 +2596,91 @@ window.examMonitoring = function examMonitoring(config) {
             }
 
             this.refresh(false, true);
+            this.loadControl();
             this.startPolling();
+        },
+
+        async loadControl() {
+            if (!this.selectedExam?.controlUrl) {
+                return;
+            }
+            try {
+                const data = await api(this.selectedExam.controlUrl);
+                this.control = data.control || null;
+            } catch {
+                /* control panel is optional */
+            }
+        },
+
+        openEndExamination() {
+            this.endPolicy = 'auto_submit';
+            this.endReason = '';
+            this.endExamError = '';
+            this.endOfflineStudents = this.summary.offline || 0;
+            this.endExamOpen = true;
+        },
+
+        async submitEndExamination() {
+            if (!this.selectedExam?.endUrl || this.endExamSubmitting) {
+                return;
+            }
+            this.endExamSubmitting = true;
+            this.endExamError = '';
+            try {
+                const data = await api(this.selectedExam.endUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        end_policy: this.endPolicy,
+                        reason: this.endReason || null,
+                    }),
+                });
+                this.endExamOpen = false;
+                this.endOfflineStudents = data.offline_students || 0;
+                if (data.activity) {
+                    this.activities = [data.activity, ...(this.activities || [])];
+                }
+                window.appToast?.(data.message || 'Examination ended.');
+                await this.refresh(false, true);
+                await this.loadControl();
+            } catch (error) {
+                this.endExamError = error.message || 'Unable to end the examination.';
+            } finally {
+                this.endExamSubmitting = false;
+            }
+        },
+
+        openExtendDeadline() {
+            this.newDeadlineDate = '';
+            this.newDeadlineTime = '';
+            this.extendReason = '';
+            this.extendDeadlineError = '';
+            this.extendDeadlineOpen = true;
+        },
+
+        async submitExtendDeadline() {
+            if (!this.selectedExam?.extendDeadlineUrl || this.extendDeadlineSubmitting) {
+                return;
+            }
+            this.extendDeadlineSubmitting = true;
+            this.extendDeadlineError = '';
+            try {
+                const data = await api(this.selectedExam.extendDeadlineUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        deadline_date: this.newDeadlineDate,
+                        deadline_time: this.newDeadlineTime,
+                        reason: this.extendReason || null,
+                    }),
+                });
+                this.extendDeadlineOpen = false;
+                window.appToast?.(data.message || 'Deadline updated.');
+                await this.refresh(false, true);
+                await this.loadControl();
+            } catch (error) {
+                this.extendDeadlineError = error.message || 'Unable to update the deadline.';
+            } finally {
+                this.extendDeadlineSubmitting = false;
+            }
         },
 
         startPolling() {

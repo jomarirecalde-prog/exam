@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\ExamDeadlinePolicy;
 use App\Enums\ExaminationAccessMode;
 use App\Enums\ExaminationPeriod;
 use App\Enums\ExamStatus;
+use App\Http\Requests\Concerns\ValidatesExaminationSchedule;
 use App\Models\Examination;
 use App\Services\Examinations\ExaminationSectionService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -12,6 +14,7 @@ use Illuminate\Validation\Rule;
 
 class StoreExaminationRequest extends FormRequest
 {
+    use ValidatesExaminationSchedule;
     public function authorize(): bool
     {
         return $this->user()?->can('create', Examination::class) ?? false;
@@ -52,6 +55,12 @@ class StoreExaminationRequest extends FormRequest
             'allow_pending_offline_submission' => ['sometimes', 'boolean'],
             'max_offline_duration_minutes' => ['nullable', 'integer', 'min:5', 'max:480'],
             'sync_grace_period_minutes' => ['nullable', 'integer', 'min:5', 'max:120'],
+            'availability_immediate' => ['sometimes', 'boolean'],
+            'available_from_date' => ['nullable', 'date'],
+            'available_from_time' => ['nullable', 'date_format:H:i'],
+            'deadline_date' => ['nullable', 'date'],
+            'deadline_time' => ['nullable', 'date_format:H:i'],
+            'deadline_policy' => ['nullable', Rule::enum(ExamDeadlinePolicy::class)],
             'status' => ['sometimes', Rule::in([ExamStatus::Draft->value, ExamStatus::Published->value])],
             'questions' => ['sometimes', 'array'],
             'questions.*.type' => ['required_with:questions', 'string', Rule::in(['multiple_choice', 'true_false', 'identification', 'essay'])],
@@ -111,6 +120,8 @@ class StoreExaminationRequest extends FormRequest
                     $this->integer('year_level_id'),
                 );
             }
+
+            $this->validateExaminationSchedule($validator);
         });
     }
 
@@ -126,6 +137,7 @@ class StoreExaminationRequest extends FormRequest
             'allow_offline_continuation' => $this->boolean('allow_offline_continuation'),
             'require_offline_preparation' => $this->boolean('require_offline_preparation'),
             'allow_pending_offline_submission' => $this->boolean('allow_pending_offline_submission'),
+            'availability_immediate' => $this->boolean('availability_immediate', true),
             'status' => strtoupper((string) $this->input('status', ExamStatus::Draft->value)),
         ]);
     }
