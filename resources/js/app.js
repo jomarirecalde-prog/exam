@@ -1177,10 +1177,27 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             this.errors = {};
             this.step = Math.max(1, this.step - 1);
         },
+        validateAll() {
+            const steps = [
+                { step: 1, validate: () => this.validateStep1() },
+                { step: 2, validate: () => this.validateStep2() },
+                { step: 3, validate: () => this.validateStep3() },
+                { step: 4, validate: () => this.validateStep4() },
+                { step: 5, validate: () => this.validateStep5() },
+            ];
+
+            for (const { step, validate } of steps) {
+                if (!validate()) {
+                    this.step = step;
+                    return false;
+                }
+            }
+
+            return true;
+        },
         submit(event) {
-            if (!this.validateStep5()) {
+            if (!this.validateAll()) {
                 event.preventDefault();
-                this.step = 5;
                 return;
             }
             this.submitting = true;

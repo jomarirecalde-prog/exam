@@ -38,7 +38,7 @@
             <p class="mt-3 text-sm font-medium sm:hidden" x-text="steps.find((item) => item.id === step)?.label"></p>
         </nav>
 
-        <form method="post" action="{{ route('student-registration.store') }}" @submit="submit" class="mt-8 space-y-6">
+        <form method="post" action="{{ route('student-registration.store') }}" @submit="submit" novalidate class="mt-8 space-y-6">
             @csrf
 
             <template x-for="offeringId in form.subject_offering_ids" :key="'offering-' + offeringId">
