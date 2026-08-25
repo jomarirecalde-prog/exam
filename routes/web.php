@@ -27,8 +27,8 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-    Route::get('/students', [PlatformController::class, 'students'])->name('students.index');
     Route::middleware('role:superadmin,admin')->group(function () {
+        Route::resource('students', \App\Http\Controllers\StudentController::class)->only(['index', 'show', 'edit', 'update']);
         Route::get('/admin/student-registrations', [AdminStudentRegistrationController::class, 'index'])
             ->name('admin.student-registrations.index');
         Route::get('/admin/student-registrations/{student}', [AdminStudentRegistrationController::class, 'show'])

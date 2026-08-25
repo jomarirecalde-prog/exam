@@ -44,6 +44,8 @@ class Navigation
             'dashboard' => [['Dashboard']],
             'profile' => [['Dashboard', 'dashboard'], ['Profile']],
             'students.index' => [['Academic'], ['Students']],
+            'students.show' => [['Academic'], ['Students', 'students.index'], ['Profile']],
+            'students.edit' => [['Academic'], ['Students', 'students.index'], ['Edit']],
             'admin.student-registrations.index' => [['Academic'], ['Student Registrations']],
             'admin.student-registrations.show' => [['Academic'], ['Student Registrations', 'admin.student-registrations.index'], ['Details']],
             'instructors.index' => [['Academic'], ['Instructors']],

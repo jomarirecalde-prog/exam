@@ -16,25 +16,6 @@ use Illuminate\View\View;
 
 class PlatformController extends Controller
 {
-    public function students(): View
-    {
-        return view('pages.directory', $this->listing(
-            title: 'Students',
-            subtitle: 'Manage enrolled students and their academic placement.',
-            emptyTitle: 'No students yet.',
-            emptyBody: 'Add students to assign them to programs, sections, and examinations.',
-            emptyIcon: 'graduation-cap',
-            columns: ['Student', 'Student ID', 'Program', 'Section', 'Status'],
-            rows: Student::query()->with(['user', 'program', 'section'])->latest()->paginate(10)->through(fn (Student $student) => [
-                $student->user?->fullName() ?: $student->user?->name,
-                $student->student_id,
-                $student->program?->code,
-                $student->section?->name,
-                $student->is_active ? 'Active' : 'Closed',
-            ]),
-        ));
-    }
-
     public function examinations(Request $request): View
     {
         $query = Examination::query()->with(['subject', 'sections'])->latest();
