@@ -233,6 +233,29 @@ class ExaminationMonitoringTest extends TestCase
         $this->assertSame(2, $delta['students'][0]['current_question']);
     }
 
+    public function test_monitoring_delta_with_no_changes_returns_empty_student_delta_but_full_summary(): void
+    {
+        $data = $this->monitoringScenario(withQuestions: true);
+        $this->startAttempt($data);
+
+        $initial = $this->actingAs($data['instructorUser'])
+            ->getJson(route('monitoring.data', $data['examination']))
+            ->assertOk()
+            ->json();
+
+        $delta = $this->actingAs($data['instructorUser'])
+            ->getJson(route('monitoring.data', [
+                'examination' => $data['examination'],
+                'since' => $initial['server_time'],
+            ]))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame([], $delta['students']);
+        $this->assertGreaterThan(0, $delta['summary']['total']);
+        $this->assertGreaterThan(0, $delta['summary']['taking_exam']);
+    }
+
     /**
      * @return array<string, mixed>
      */

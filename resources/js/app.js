@@ -2762,7 +2762,7 @@ window.examMonitoring = function examMonitoring(config) {
                 this.summary = data.summary || {};
                 this.activities = data.activities || [];
 
-                if (full || !this.lastSyncAt || !data.students?.length) {
+                if (full || !this.lastSyncAt) {
                     this.students = data.students || [];
                 } else {
                     this.mergeStudents(data.students || []);
