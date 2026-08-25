@@ -11,6 +11,7 @@ class StudentSubject extends Model
     protected $fillable = [
         'student_id',
         'subject_id',
+        'subject_offering_id',
         'academic_year_id',
         'semester_id',
         'status',
@@ -35,6 +36,11 @@ class StudentSubject extends Model
     public function subject(): BelongsTo
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    public function subjectOffering(): BelongsTo
+    {
+        return $this->belongsTo(SubjectOffering::class, 'subject_offering_id');
     }
 
     public function academicYear(): BelongsTo

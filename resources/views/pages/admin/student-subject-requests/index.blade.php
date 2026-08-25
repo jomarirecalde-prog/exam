@@ -36,7 +36,7 @@
                                 </td>
                                 <td class="text-muted">{{ $request->academicYear?->name }} · {{ $request->semester?->name }}</td>
                                 <td class="text-sm text-muted">
-                                    +{{ count($request->add_subject_ids ?? []) }} / −{{ count($request->remove_subject_ids ?? []) }}
+                                    +{{ count($request->add_subject_offering_ids ?? []) }} / −{{ count($request->remove_subject_offering_ids ?? []) }}
                                 </td>
                                 <td><x-ui.badge :status="$request->status->value" /></td>
                                 <td class="text-muted">{{ $request->created_at?->format('M j, Y') }}</td>

@@ -15,7 +15,9 @@ use App\Models\Section;
 use App\Models\Semester;
 use App\Models\Student;
 use App\Models\StudentSubject;
+use App\Models\Instructor;
 use App\Models\Subject;
+use App\Models\SubjectOffering;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Notifications\NewStudentRegistrationNotification;
@@ -86,10 +88,10 @@ class StudentRegistrationTest extends TestCase
     {
         $structure = $this->academicStructure();
         $payload = $this->registrationPayload($structure);
-        $payload['subject_ids'] = [];
+        $payload['subject_offering_ids'] = [];
 
         $this->post(route('student-registration.store'), $payload)
-            ->assertSessionHasErrors(['subject_ids']);
+            ->assertSessionHasErrors(['subject_offering_ids']);
     }
 
     public function test_duplicate_student_id_is_rejected(): void
@@ -132,14 +134,19 @@ class StudentRegistrationTest extends TestCase
             ->assertSessionHasErrors(['section_id']);
     }
 
-    public function test_manipulated_subject_ids_are_rejected(): void
+    public function test_manipulated_subject_offering_ids_are_rejected(): void
     {
         $structure = $this->academicStructure();
         $payload = $this->registrationPayload($structure);
-        $payload['subject_ids'] = [99999];
+        $payload['subject_offering_ids'] = [99999];
 
-        $this->post(route('student-registration.store'), $payload)
-            ->assertSessionHasErrors(['subject_ids.0']);
+        $response = $this->post(route('student-registration.store'), $payload);
+
+        $response->assertSessionHasErrors();
+        $this->assertTrue(
+            $response->getSession()->get('errors')->has('subject_offering_ids')
+            || $response->getSession()->get('errors')->has('subject_offering_ids.0')
+        );
     }
 
     public function test_pending_student_cannot_sign_in(): void
@@ -251,7 +258,7 @@ class StudentRegistrationTest extends TestCase
             ->assertJsonFragment(['id' => $structure['section']->id]);
     }
 
-    public function test_subjects_lookup_returns_recommended_and_other_subjects(): void
+    public function test_subjects_lookup_returns_recommended_and_other_offerings(): void
     {
         $structure = $this->academicStructure();
 
@@ -262,13 +269,44 @@ class StudentRegistrationTest extends TestCase
             'year_level_id' => $structure['yearLevel']->id,
         ]))
             ->assertOk()
-            ->assertJsonFragment(['id' => $structure['subjects'][0]->id]);
+            ->assertJsonFragment(['id' => $structure['offerings'][0]->id])
+            ->assertJsonFragment(['instructor_name' => 'Juan Dela Cruz']);
+    }
+
+    public function test_student_cannot_access_exam_for_different_subject_offering(): void
+    {
+        $structure = $this->academicStructure();
+        $student = $this->approvedStudent($structure, [$structure['offerings'][0]->id]);
+
+        StudentSubject::query()
+            ->where('student_id', $student->id)
+            ->update([
+                'status' => StudentSubjectEnrollmentStatus::Verified,
+                'verified_at' => now(),
+            ]);
+
+        $exam = Examination::create([
+            'title' => 'IS 103 Exam — Other Section',
+            'subject_id' => $structure['subjects'][1]->id,
+            'subject_offering_id' => $structure['offerings'][2]->id,
+            'academic_year_id' => $structure['year']->id,
+            'semester_id' => $structure['semester']->id,
+            'examination_period' => 'MIDTERM',
+            'duration_minutes' => 60,
+            'passing_percentage' => 75,
+            'status' => ExamStatus::Published,
+            'access_mode' => ExaminationAccessMode::SubjectOnly,
+        ]);
+
+        $service = app(ExaminationAccessService::class);
+
+        $this->assertFalse($service->canTake($student->user, $exam));
     }
 
     public function test_student_cannot_access_exam_without_subject_enrollment(): void
     {
         $structure = $this->academicStructure();
-        $student = $this->approvedStudent($structure, [$structure['subjects'][0]->id]);
+        $student = $this->approvedStudent($structure, [$structure['offerings'][0]->id]);
 
         $exam = Examination::create([
             'title' => 'IS 103 Exam',
@@ -290,7 +328,7 @@ class StudentRegistrationTest extends TestCase
     public function test_student_can_access_exam_when_enrolled_in_subject(): void
     {
         $structure = $this->academicStructure();
-        $student = $this->approvedStudent($structure, [$structure['subjects'][0]->id]);
+        $student = $this->approvedStudent($structure, [$structure['offerings'][0]->id]);
 
         StudentSubject::query()
             ->where('student_id', $student->id)
@@ -324,7 +362,7 @@ class StudentRegistrationTest extends TestCase
         return $admin;
     }
 
-    protected function approvedStudent(array $structure, array $subjectIds): Student
+    protected function approvedStudent(array $structure, array $offeringIds): Student
     {
         $user = User::factory()->create(['is_active' => true]);
         $user->assignRole(UserRole::Student->value);
@@ -340,10 +378,13 @@ class StudentRegistrationTest extends TestCase
             'is_active' => true,
         ]);
 
-        foreach ($subjectIds as $subjectId) {
+        foreach ($offeringIds as $offeringId) {
+            $offering = SubjectOffering::query()->findOrFail($offeringId);
+
             StudentSubject::create([
                 'student_id' => $student->id,
-                'subject_id' => $subjectId,
+                'subject_id' => $offering->subject_id,
+                'subject_offering_id' => $offering->id,
                 'academic_year_id' => $structure['year']->id,
                 'semester_id' => $structure['semester']->id,
                 'status' => StudentSubjectEnrollmentStatus::PendingVerification,
@@ -373,7 +414,10 @@ class StudentRegistrationTest extends TestCase
             'program_id' => $structure['program']->id,
             'year_level_id' => $structure['yearLevel']->id,
             'section_id' => $structure['section']->id,
-            'subject_ids' => collect($structure['subjects'])->pluck('id')->all(),
+            'subject_offering_ids' => collect($structure['offerings'])
+                ->filter(fn ($offering) => (int) $offering->section_id === (int) $structure['section']->id)
+                ->pluck('id')
+                ->all(),
             'password' => 'Password123!',
             'password_confirmation' => 'Password123!',
         ];
@@ -441,7 +485,45 @@ class StudentRegistrationTest extends TestCase
             'is_active' => true,
         ]));
 
-        foreach ($subjects as $subject) {
+        $instructorUser = User::factory()->create([
+            'first_name' => 'Juan',
+            'last_name' => 'Dela Cruz',
+            'name' => 'Prof. Juan Dela Cruz',
+        ]);
+
+        $instructor = Instructor::create([
+            'user_id' => $instructorUser->id,
+            'employee_id' => 'EMP-001',
+            'department_id' => $department->id,
+            'is_active' => true,
+        ]);
+
+        $otherInstructorUser = User::factory()->create([
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'name' => 'Prof. Maria Santos',
+        ]);
+
+        $otherInstructor = Instructor::create([
+            'user_id' => $otherInstructorUser->id,
+            'employee_id' => 'EMP-002',
+            'department_id' => $department->id,
+            'is_active' => true,
+        ]);
+
+        $sectionB = Section::create([
+            'program_id' => $program->id,
+            'year_level_id' => $yearLevel->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'name' => 'BSIS 2B',
+            'code' => 'BSIS-2B',
+            'is_active' => true,
+        ]);
+
+        $offerings = collect();
+
+        foreach ($subjects as $index => $subject) {
             DB::table('subject_section')->insert([
                 'subject_id' => $subject->id,
                 'section_id' => $section->id,
@@ -450,10 +532,38 @@ class StudentRegistrationTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            $offerings->push(SubjectOffering::create([
+                'subject_id' => $subject->id,
+                'instructor_id' => $instructor->id,
+                'section_id' => $section->id,
+                'academic_year_id' => $year->id,
+                'semester_id' => $semester->id,
+                'is_active' => true,
+            ]));
         }
 
-        return compact('year', 'semester', 'department', 'program', 'yearLevel', 'section') + [
+        DB::table('subject_section')->insert([
+            'subject_id' => $subjects[1]->id,
+            'section_id' => $sectionB->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $offerings->push(SubjectOffering::create([
+            'subject_id' => $subjects[1]->id,
+            'instructor_id' => $otherInstructor->id,
+            'section_id' => $sectionB->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'is_active' => true,
+        ]));
+
+        return compact('year', 'semester', 'department', 'program', 'yearLevel', 'section', 'sectionB') + [
             'subjects' => $subjects->all(),
+            'offerings' => $offerings->all(),
         ];
     }
 

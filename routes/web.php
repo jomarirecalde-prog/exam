@@ -87,6 +87,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/examinations/create', [\App\Http\Controllers\ExaminationController::class, 'create'])->name('examinations.create');
         Route::post('/examinations', [\App\Http\Controllers\ExaminationController::class, 'store'])->name('examinations.store');
         Route::get('/examinations/available-sections', [\App\Http\Controllers\ExaminationController::class, 'availableSections'])->name('examinations.sections');
+        Route::get('/examinations/available-offerings', [\App\Http\Controllers\ExaminationController::class, 'availableOfferings'])->name('examinations.offerings');
         Route::post('/examinations/preview-questions-csv', [\App\Http\Controllers\ExaminationController::class, 'previewQuestionsCsv'])->name('examinations.preview-questions-csv');
         Route::post('/examinations/import-questions', [\App\Http\Controllers\ExaminationController::class, 'importQuestions'])->name('examinations.import-questions');
         Route::post('/examinations/questions/csv-error-report', [\App\Http\Controllers\ExaminationController::class, 'questionCsvErrorReport'])->name('examinations.question-csv-error-report');

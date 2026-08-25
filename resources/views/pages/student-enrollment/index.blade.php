@@ -59,6 +59,14 @@
                         <div class="flex-1">
                             <p class="text-lg font-semibold">{{ $enrollment['subject']->code }}</p>
                             <p class="mt-1 text-sm leading-6 text-muted">{{ $enrollment['subject']->name }}</p>
+                            @if (! empty($enrollment['offering']))
+                                <p class="mt-2 text-sm text-muted">
+                                    Instructor: {{ $enrollment['offering']->instructorDisplayName() }}
+                                </p>
+                                <p class="text-sm text-muted">
+                                    Section: {{ $enrollment['offering']->sectionDisplayName() }}
+                                </p>
+                            @endif
                             @if ($status)
                                 <div class="mt-3">
                                     <x-ui.badge :status="$status->badgeStatus()">{{ $status->label() }}</x-ui.badge>

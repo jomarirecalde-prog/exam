@@ -112,7 +112,7 @@ class StudentRegistrationController extends Controller
             return response()->json(['message' => 'Invalid section selection.'], 422);
         }
 
-        $groups = $this->subjectEnrollments->subjectsForRegistration(
+        $groups = $this->subjectEnrollments->offeringsForRegistration(
             (int) $data['section_id'],
             (int) $data['department_id'],
             $data['search'] ?? null,
@@ -120,18 +120,8 @@ class StudentRegistrationController extends Controller
         );
 
         return response()->json([
-            'recommended' => $groups['recommended']->map(fn ($subject) => [
-                'id' => $subject->id,
-                'code' => $subject->code,
-                'name' => $subject->name,
-                'units' => $subject->units,
-            ])->values(),
-            'other' => $groups['other']->map(fn ($subject) => [
-                'id' => $subject->id,
-                'code' => $subject->code,
-                'name' => $subject->name,
-                'units' => $subject->units,
-            ])->values(),
+            'recommended' => $groups['recommended']->values(),
+            'other' => $groups['other']->values(),
         ]);
     }
 }

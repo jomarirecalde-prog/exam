@@ -41,8 +41,8 @@
         <form method="post" action="{{ route('student-registration.store') }}" @submit="submit" class="mt-8 space-y-6">
             @csrf
 
-            <template x-for="subjectId in form.subject_ids" :key="'subject-' + subjectId">
-                <input type="hidden" name="subject_ids[]" :value="subjectId">
+            <template x-for="offeringId in form.subject_offering_ids" :key="'offering-' + offeringId">
+                <input type="hidden" name="subject_offering_ids[]" :value="offeringId">
             </template>
 
             {{-- Step 1: Personal --}}
@@ -177,7 +177,7 @@
                         x-model="subjectSearch"
                         @input.debounce.300ms="fetchSubjects"
                         class="ui-input pl-10"
-                        placeholder="Search subjects by code or name..."
+                        placeholder="Search by subject code, name, instructor, or section..."
                         autocomplete="off"
                     >
                 </div>
@@ -187,12 +187,21 @@
                 <div x-show="!subjectsLoading && recommendedSubjects.length > 0" class="space-y-3">
                     <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">Recommended for Your Section</h3>
                     <div class="space-y-2">
-                        <template x-for="subject in recommendedSubjects" :key="'rec-' + subject.id">
-                            <label class="flex min-h-[3.25rem] cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
-                                <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :value="String(subject.id)" :checked="isSubjectSelected(subject.id)" @change="toggleSubject(subject.id)">
-                                <span class="flex-1">
-                                    <span class="block font-medium" x-text="subject.code + ' — ' + subject.name"></span>
-                                    <span class="text-sm text-muted" x-show="subject.units" x-text="subject.units + ' units'"></span>
+                        <template x-for="offering in recommendedSubjects" :key="'rec-' + offering.id">
+                            <label class="block cursor-pointer rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
+                                <span class="flex items-start gap-3">
+                                    <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :checked="isOfferingSelected(offering.id)" @change="toggleOffering(offering.id)">
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block font-semibold tracking-wide" x-text="offering.code"></span>
+                                        <span class="mt-0.5 block text-sm leading-6" x-text="offering.name"></span>
+                                        <span class="mt-3 grid gap-1 text-sm text-muted sm:grid-cols-[5.5rem_minmax(0,1fr)]">
+                                            <span>Instructor</span>
+                                            <span class="text-ink" x-text="offering.instructor_name"></span>
+                                            <span>Section</span>
+                                            <span class="text-ink" x-text="offering.section_name"></span>
+                                        </span>
+                                        <span class="mt-2 block text-sm text-muted" x-show="offering.program_name || offering.year_level_name" x-text="[offering.program_name, offering.year_level_name].filter(Boolean).join(' • ')"></span>
+                                    </span>
                                 </span>
                             </label>
                         </template>
@@ -205,36 +214,52 @@
                         <button type="button" class="text-sm font-medium text-brand hover:underline" @click="toggleBrowseAll()" x-text="browseAllSubjects ? 'Show department subjects only' : 'Browse all available subjects'"></button>
                     </div>
                     <div class="space-y-2">
-                        <template x-for="subject in otherSubjects" :key="'other-' + subject.id">
-                            <label class="flex min-h-[3.25rem] cursor-pointer items-start gap-3 rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
-                                <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :value="String(subject.id)" :checked="isSubjectSelected(subject.id)" @change="toggleSubject(subject.id)">
-                                <span class="flex-1">
-                                    <span class="block font-medium" x-text="subject.code + ' — ' + subject.name"></span>
-                                    <span class="text-sm text-muted" x-show="subject.units" x-text="subject.units + ' units'"></span>
+                        <template x-for="offering in otherSubjects" :key="'other-' + offering.id">
+                            <label class="block cursor-pointer rounded-lg border border-line px-4 py-3 transition hover:border-brand hover:bg-brand-soft/30">
+                                <span class="flex items-start gap-3">
+                                    <input type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-line" :checked="isOfferingSelected(offering.id)" @change="toggleOffering(offering.id)">
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block font-semibold tracking-wide" x-text="offering.code"></span>
+                                        <span class="mt-0.5 block text-sm leading-6" x-text="offering.name"></span>
+                                        <span class="mt-3 grid gap-1 text-sm text-muted sm:grid-cols-[5.5rem_minmax(0,1fr)]">
+                                            <span>Instructor</span>
+                                            <span class="text-ink" x-text="offering.instructor_name"></span>
+                                            <span>Section</span>
+                                            <span class="text-ink" x-text="offering.section_name"></span>
+                                        </span>
+                                        <span class="mt-2 block text-sm text-muted" x-show="offering.program_name || offering.year_level_name" x-text="[offering.program_name, offering.year_level_name].filter(Boolean).join(' • ')"></span>
+                                    </span>
                                 </span>
                             </label>
                         </template>
-                        <p x-show="otherSubjects.length === 0 && !subjectsLoading" class="text-sm text-muted">No additional subjects match your search.</p>
+                        <p x-show="otherSubjects.length === 0 && !subjectsLoading" class="text-sm text-muted">No additional subject offerings match your search.</p>
                     </div>
                 </div>
 
                 <div class="rounded-lg border border-line bg-surface-2 px-4 py-4">
                     <h3 class="text-sm font-semibold">Your Selected Subjects</h3>
-                    <template x-if="selectedSubjectsList.length === 0">
+                    <template x-if="selectedOfferingsList.length === 0">
                         <p class="mt-2 text-sm text-muted">No subjects selected yet.</p>
                     </template>
-                    <ol x-show="selectedSubjectsList.length > 0" class="mt-3 space-y-2">
-                        <template x-for="(subject, index) in selectedSubjectsList" :key="'sel-' + subject.id">
-                            <li class="flex items-center justify-between gap-3 text-sm">
-                                <span x-text="(index + 1) + '. ' + subject.code + ' — ' + subject.name"></span>
-                                <button type="button" class="text-danger-ink hover:underline" @click="toggleSubject(subject.id)">Remove</button>
+                    <ol x-show="selectedOfferingsList.length > 0" class="mt-3 space-y-3">
+                        <template x-for="(offering, index) in selectedOfferingsList" :key="'sel-' + offering.id">
+                            <li class="rounded-lg border border-line bg-surface px-4 py-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="font-semibold" x-text="offering.code"></p>
+                                        <p class="text-sm leading-6" x-text="offering.name"></p>
+                                        <p class="mt-2 text-sm text-muted">Instructor: <span class="text-ink" x-text="offering.instructor_name"></span></p>
+                                        <p class="text-sm text-muted">Section: <span class="text-ink" x-text="offering.section_name"></span></p>
+                                    </div>
+                                    <button type="button" class="shrink-0 text-sm text-danger-ink hover:underline" @click="toggleOffering(offering.id)">Remove</button>
+                                </div>
                             </li>
                         </template>
                     </ol>
-                    <p class="mt-3 text-sm font-medium">Total Selected: <span x-text="form.subject_ids.length"></span></p>
+                    <p class="mt-3 text-sm font-medium">Total Selected: <span x-text="form.subject_offering_ids.length"></span></p>
                 </div>
 
-                <p class="ui-error" x-show="errors.subject_ids" x-text="errors.subject_ids" role="alert"></p>
+                <p class="ui-error" x-show="errors.subject_offering_ids" x-text="errors.subject_offering_ids" role="alert"></p>
             </div>
 
             {{-- Step 5: Review & Account --}}
@@ -261,9 +286,13 @@
 
                         <div>
                             <h3 class="font-semibold">Enrolled Subjects</h3>
-                            <ul class="mt-2 space-y-1">
-                                <template x-for="subject in selectedSubjectsList" :key="'review-' + subject.id">
-                                    <li class="text-muted">✓ <span x-text="subject.code + ' — ' + subject.name"></span></li>
+                            <ul class="mt-2 space-y-2">
+                                <template x-for="offering in selectedOfferingsList" :key="'review-' + offering.id">
+                                    <li class="rounded-lg border border-line px-4 py-3 text-sm">
+                                        <p class="font-medium" x-text="'✓ ' + offering.code + ' — ' + offering.name"></p>
+                                        <p class="mt-1 text-muted">Instructor: <span class="text-ink" x-text="offering.instructor_name"></span></p>
+                                        <p class="text-muted">Section: <span class="text-ink" x-text="offering.section_name"></span></p>
+                                    </li>
                                 </template>
                             </ul>
                         </div>

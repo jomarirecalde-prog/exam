@@ -14,6 +14,7 @@ use App\Models\YearLevel;
 use App\Services\AuditLogger;
 use App\Services\Students\StudentRegistrationService;
 use App\Services\Students\StudentSubjectEnrollmentService;
+use App\Services\Students\SubjectOfferingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -23,6 +24,7 @@ class AdminStudentRegistrationController extends Controller
     public function __construct(
         protected StudentRegistrationService $registrations,
         protected StudentSubjectEnrollmentService $subjectEnrollments,
+        protected SubjectOfferingService $offerings,
         protected AuditLogger $audit,
     ) {
     }
@@ -85,14 +87,21 @@ class AdminStudentRegistrationController extends Controller
             'section.semester',
             'approver',
             'subjectEnrollments.subject',
+            'subjectEnrollments.subjectOffering.instructor.user',
+            'subjectEnrollments.subjectOffering.section',
             'subjectEnrollments.academicYear',
             'subjectEnrollments.semester',
         ]);
 
+        $academicYearId = $student->section?->academic_year_id;
+        $semesterId = $student->section?->semester_id;
+
         return view('pages.admin.student-registrations.show', [
             'student' => $student,
             'subjectVerificationRequired' => $this->subjectEnrollments->subjectVerificationRequired(),
-            'availableSubjects' => Subject::query()->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']),
+            'availableOfferings' => $academicYearId && $semesterId
+                ? $this->offerings->offeringsForChangeRequest($student, $academicYearId, $semesterId)
+                : collect(),
         ]);
     }
 
@@ -175,10 +184,10 @@ class AdminStudentRegistrationController extends Controller
     public function addSubject(Request $request, Student $student): RedirectResponse
     {
         $data = $request->validate([
-            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+            'subject_offering_id' => ['required', 'integer', 'exists:subject_instructor,id'],
         ]);
 
-        $this->subjectEnrollments->addEnrollment($student, (int) $data['subject_id'], $request->user());
+        $this->subjectEnrollments->addEnrollment($student, (int) $data['subject_offering_id'], $request->user());
 
         return redirect()
             ->route('admin.student-registrations.show', $student)

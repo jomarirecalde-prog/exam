@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\StudentSubjectChangeRequestStatus;
 use App\Models\StudentSubjectChangeRequest;
+use App\Models\SubjectOffering;
 use App\Services\Students\StudentSubjectEnrollmentService;
+use App\Services\Students\SubjectOfferingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,6 +15,7 @@ class AdminStudentSubjectRequestController extends Controller
 {
     public function __construct(
         protected StudentSubjectEnrollmentService $subjectEnrollments,
+        protected SubjectOfferingService $offerings,
     ) {}
 
     public function index(Request $request): View
@@ -45,16 +48,20 @@ class AdminStudentSubjectRequestController extends Controller
             'reviewer',
         ]);
 
-        $subjects = \App\Models\Subject::query()
-            ->whereIn('id', collect($changeRequest->add_subject_ids ?? [])
-                ->merge($changeRequest->remove_subject_ids ?? [])
-                ->unique())
+        $offeringIds = collect($changeRequest->add_subject_offering_ids ?? [])
+            ->merge($changeRequest->remove_subject_offering_ids ?? [])
+            ->unique()
+            ->filter();
+
+        $offerings = SubjectOffering::query()
+            ->with(['subject', 'instructor.user', 'section'])
+            ->whereIn('id', $offeringIds)
             ->get()
             ->keyBy('id');
 
         return view('pages.admin.student-subject-requests.show', [
             'changeRequest' => $changeRequest,
-            'subjects' => $subjects,
+            'offerings' => $offerings,
         ]);
     }
 

@@ -34,9 +34,11 @@ class StudentRegistrationService
             (int) $data['section_id'],
         );
 
-        $subjectIds = $this->subjectEnrollments->validateSubjectIds($data['subject_ids'] ?? []);
+        $offeringIds = $this->subjectEnrollments->validateOfferingIds($data['subject_offering_ids'] ?? [])
+            ->pluck('id')
+            ->all();
 
-        $student = DB::transaction(function () use ($data, $subjectIds) {
+        $student = DB::transaction(function () use ($data, $offeringIds) {
             $firstName = trim($data['first_name']);
             $lastName = trim($data['last_name']);
             $middleName = filled($data['middle_name'] ?? null) ? trim($data['middle_name']) : null;
@@ -76,11 +78,19 @@ class StudentRegistrationService
             $this->syncSectionEnrollment($student);
             $this->subjectEnrollments->syncDeclaredEnrollments(
                 $student,
-                $subjectIds,
+                $offeringIds,
                 actor: $user,
             );
 
-            return $student->load(['user', 'program.department', 'yearLevel', 'section', 'subjectEnrollments.subject']);
+            return $student->load([
+                'user',
+                'program.department',
+                'yearLevel',
+                'section',
+                'subjectEnrollments.subject',
+                'subjectEnrollments.subjectOffering.instructor.user',
+                'subjectEnrollments.subjectOffering.section',
+            ]);
         });
 
         $this->notifyAdministrators($student);

@@ -18,6 +18,7 @@ use App\Services\AuditLogger;
 use App\Services\Examinations\ExaminationSectionService;
 use App\Services\Questions\ExaminationQuestionService;
 use App\Services\Questions\QuestionCsvImporter;
+use App\Services\Students\SubjectOfferingService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -35,6 +36,7 @@ class ExaminationController extends Controller
     public function __construct(
         protected ExaminationSectionService $sections,
         protected ExaminationQuestionService $questions,
+        protected SubjectOfferingService $offerings,
     ) {
     }
 
@@ -56,6 +58,7 @@ class ExaminationController extends Controller
                 'description' => $data['description'] ?? null,
                 'instructions' => $data['instructions'] ?? null,
                 'subject_id' => $data['subject_id'],
+                'subject_offering_id' => $data['subject_offering_id'] ?? null,
                 'instructor_id' => $request->user()->instructor?->id,
                 'academic_year_id' => $data['academic_year_id'],
                 'semester_id' => $data['semester_id'],
@@ -107,6 +110,7 @@ class ExaminationController extends Controller
                 'description' => $data['description'] ?? null,
                 'instructions' => $data['instructions'] ?? null,
                 'subject_id' => $data['subject_id'],
+                'subject_offering_id' => $data['subject_offering_id'] ?? null,
                 'academic_year_id' => $data['academic_year_id'],
                 'semester_id' => $data['semester_id'],
                 'examination_period' => $data['examination_period'],
@@ -163,6 +167,27 @@ class ExaminationController extends Controller
         return response()->json([
             'sections' => $this->sections->present($sections),
         ]);
+    }
+
+    public function availableOfferings(Request $request): JsonResponse
+    {
+        $this->authorize('create', Examination::class);
+
+        $data = $request->validate([
+            'academic_year_id' => ['required', 'exists:academic_years,id'],
+            'semester_id' => ['required', 'exists:semesters,id'],
+            'subject_id' => ['required', 'exists:subjects,id'],
+            'search' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $offerings = $this->offerings->offeringsForExam(
+            (int) $data['subject_id'],
+            (int) $data['academic_year_id'],
+            (int) $data['semester_id'],
+            $data['search'] ?? null,
+        );
+
+        return response()->json(['offerings' => $offerings->values()]);
     }
 
     public function previewQuestionsCsv(ImportQuestionCsvRequest $request, QuestionCsvImporter $importer): JsonResponse
@@ -280,6 +305,7 @@ class ExaminationController extends Controller
             'storeUrl' => route('examinations.store'),
             'updateUrl' => $examination ? route('examinations.update', $examination) : null,
             'sectionsUrl' => route('examinations.sections'),
+            'offeringsUrl' => route('examinations.offerings'),
             'previewQuestionsUrl' => route('examinations.preview-questions-csv'),
             'importQuestionsUrl' => route('examinations.import-questions'),
             'questionCsvTemplateUrl' => route('examinations.question-csv-template'),
@@ -304,6 +330,7 @@ class ExaminationController extends Controller
                 'academicYearId' => old('academic_year_id', $examination?->academic_year_id ?? AcademicYear::query()->where('is_current', true)->value('id')),
                 'semesterId' => old('semester_id', $examination?->semester_id ?? Semester::query()->where('is_current', true)->value('id')),
                 'subjectId' => old('subject_id', $examination?->subject_id),
+                'subjectOfferingId' => old('subject_offering_id', $examination?->subject_offering_id),
                 'programId' => old('program_id', $primary?->program_id),
                 'yearLevelId' => old('year_level_id', $primary?->year_level_id),
                 'sectionIds' => old('section_ids', $examination?->sections->pluck('id')->all() ?? []),

@@ -64,6 +64,10 @@
                                     <div>
                                         <p class="font-medium">{{ $enrollment->subject?->code }} — {{ $enrollment->subject?->name }}</p>
                                         <p class="mt-1 text-sm text-muted">
+                                            Instructor: {{ $enrollment->subjectOffering?->instructorDisplayName() ?: 'To Be Announced' }}
+                                            · Section: {{ $enrollment->subjectOffering?->sectionDisplayName() ?: '—' }}
+                                        </p>
+                                        <p class="mt-1 text-sm text-muted">
                                             {{ $enrollment->academicYear?->name ?: '—' }} · {{ $enrollment->semester?->name ?: '—' }}
                                         </p>
                                         @if ($enrollment->rejection_reason)
@@ -163,14 +167,16 @@
 
         <div x-show="addSubjectOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" @keydown.escape.window="addSubjectOpen = false">
             <div class="ui-card ui-card-pad w-full max-w-md" @click.outside="addSubjectOpen = false">
-                <h2 class="text-lg font-semibold text-ink">Add Missing Subject</h2>
+                <h2 class="text-lg font-semibold text-ink">Add Missing Subject Offering</h2>
                 <form method="post" action="{{ route('admin.student-registrations.subjects.add', $student) }}" class="mt-4 space-y-4">
                     @csrf
-                    <x-ui.field label="Subject" for="subject_id">
-                        <select id="subject_id" name="subject_id" class="ui-input" required>
-                            <option value="">Select subject</option>
-                            @foreach ($availableSubjects as $subject)
-                                <option value="{{ $subject->id }}">{{ $subject->code }} — {{ $subject->name }}</option>
+                    <x-ui.field label="Subject Offering" for="subject_offering_id">
+                        <select id="subject_offering_id" name="subject_offering_id" class="ui-input" required>
+                            <option value="">Select subject offering</option>
+                            @foreach ($availableOfferings as $offering)
+                                <option value="{{ $offering['id'] }}">
+                                    {{ $offering['code'] }} — {{ $offering['name'] }} · {{ $offering['instructor_name'] }} · {{ $offering['section_name'] }}
+                                </option>
                             @endforeach
                         </select>
                     </x-ui.field>

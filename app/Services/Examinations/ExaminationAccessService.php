@@ -167,14 +167,26 @@ class ExaminationAccessService
 
         return Examination::query()
             ->where('access_mode', ExaminationAccessMode::SubjectOnly)
-            ->get(['id', 'subject_id', 'academic_year_id', 'semester_id'])
-            ->filter(fn (Examination $exam) => $this->subjectEnrollments->isEnrolledInSubject(
-                $student,
-                (int) $exam->subject_id,
-                (int) $exam->academic_year_id,
-                (int) $exam->semester_id,
-                $verificationRequired,
-            ))
+            ->get(['id', 'subject_id', 'subject_offering_id', 'academic_year_id', 'semester_id'])
+            ->filter(function (Examination $exam) use ($student, $verificationRequired) {
+                if ($exam->subject_offering_id) {
+                    return $this->subjectEnrollments->isEnrolledInOffering(
+                        $student,
+                        (int) $exam->subject_offering_id,
+                        (int) $exam->academic_year_id,
+                        (int) $exam->semester_id,
+                        $verificationRequired,
+                    );
+                }
+
+                return $this->subjectEnrollments->isEnrolledInSubject(
+                    $student,
+                    (int) $exam->subject_id,
+                    (int) $exam->academic_year_id,
+                    (int) $exam->semester_id,
+                    $verificationRequired,
+                );
+            })
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values();
@@ -194,9 +206,19 @@ class ExaminationAccessService
         return Examination::query()
             ->where('access_mode', ExaminationAccessMode::SubjectAndSections)
             ->with('sections:id')
-            ->get(['id', 'subject_id', 'academic_year_id', 'semester_id'])
+            ->get(['id', 'subject_id', 'subject_offering_id', 'academic_year_id', 'semester_id'])
             ->filter(function (Examination $exam) use ($student, $verificationRequired) {
-                if (! $this->subjectEnrollments->isEnrolledInSubject(
+                if ($exam->subject_offering_id) {
+                    if (! $this->subjectEnrollments->isEnrolledInOffering(
+                        $student,
+                        (int) $exam->subject_offering_id,
+                        (int) $exam->academic_year_id,
+                        (int) $exam->semester_id,
+                        $verificationRequired,
+                    )) {
+                        return false;
+                    }
+                } elseif (! $this->subjectEnrollments->isEnrolledInSubject(
                     $student,
                     (int) $exam->subject_id,
                     (int) $exam->academic_year_id,
@@ -284,6 +306,15 @@ class ExaminationAccessService
 
     protected function isEnrolledInExamSubject(Student $student, Examination $examination): bool
     {
+        if ($examination->subject_offering_id) {
+            return $this->subjectEnrollments->isEnrolledInOffering(
+                $student,
+                (int) $examination->subject_offering_id,
+                (int) $examination->academic_year_id,
+                (int) $examination->semester_id,
+            ) || $this->legacySectionSubjectAccess($student, $examination);
+        }
+
         if (! $examination->subject_id) {
             return false;
         }
@@ -298,6 +329,16 @@ class ExaminationAccessService
 
     protected function hasVerifiedSubjectEnrollment(Student $student, Examination $examination): bool
     {
+        if ($examination->subject_offering_id) {
+            return $this->subjectEnrollments->isEnrolledInOffering(
+                $student,
+                (int) $examination->subject_offering_id,
+                (int) $examination->academic_year_id,
+                (int) $examination->semester_id,
+                true,
+            );
+        }
+
         return $this->subjectEnrollments->isEnrolledInSubject(
             $student,
             (int) $examination->subject_id,

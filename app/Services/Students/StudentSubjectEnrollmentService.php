@@ -4,11 +4,10 @@ namespace App\Services\Students;
 
 use App\Enums\StudentSubjectChangeRequestStatus;
 use App\Enums\StudentSubjectEnrollmentStatus;
-use App\Models\Section;
 use App\Models\Student;
 use App\Models\StudentSubject;
 use App\Models\StudentSubjectChangeRequest;
-use App\Models\Subject;
+use App\Models\SubjectOffering;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -21,6 +20,7 @@ class StudentSubjectEnrollmentService
     public function __construct(
         protected AcademicLookupService $academic,
         protected AuditLogger $audit,
+        protected SubjectOfferingService $offerings,
     ) {}
 
     public function subjectVerificationRequired(): bool
@@ -29,94 +29,42 @@ class StudentSubjectEnrollmentService
     }
 
     /**
-     * @param  array<int, int|string>  $subjectIds
-     * @return array<int, int>
+     * @param  array<int, int|string>  $offeringIds
+     * @return Collection<int, SubjectOffering>
      */
-    public function validateSubjectIds(array $subjectIds): array
+    public function validateOfferingIds(array $offeringIds): Collection
     {
-        $ids = collect($subjectIds)
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn (int $id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
+        try {
+            return $this->offerings->validateOfferingIds($offeringIds);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            if ($exception->getStatusCode() === 422) {
+                throw ValidationException::withMessages([
+                    'subject_offering_ids' => $exception->getMessage(),
+                ]);
+            }
 
-        if ($ids === []) {
-            throw ValidationException::withMessages([
-                'subject_ids' => 'Please select at least one enrolled subject.',
-            ]);
+            throw $exception;
         }
-
-        $validIds = Subject::query()
-            ->whereIn('id', $ids)
-            ->where('is_active', true)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
-        $invalid = array_diff($ids, $validIds);
-
-        if ($invalid !== []) {
-            throw ValidationException::withMessages([
-                'subject_ids' => 'One or more selected subjects are invalid or unavailable.',
-            ]);
-        }
-
-        return $validIds;
     }
 
     /**
-     * @return array{recommended: Collection<int, Subject>, other: Collection<int, Subject>}
+     * @return array{recommended: Collection<int, array<string, mixed>>, other: Collection<int, array<string, mixed>>}
      */
-    public function subjectsForRegistration(
+    public function offeringsForRegistration(
         int $sectionId,
         int $departmentId,
         ?string $search = null,
         bool $browseAll = false,
     ): array {
-        $section = Section::query()->with('program')->findOrFail($sectionId);
-
-        $recommendedIds = DB::table('subject_section')
-            ->where('section_id', $sectionId)
-            ->when($section->academic_year_id, fn ($q) => $q->where('academic_year_id', $section->academic_year_id))
-            ->when($section->semester_id, fn ($q) => $q->where('semester_id', $section->semester_id))
-            ->pluck('subject_id')
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->all();
-
-        $recommendedQuery = Subject::query()
-            ->where('is_active', true)
-            ->whereIn('id', $recommendedIds !== [] ? $recommendedIds : [0])
-            ->orderBy('code');
-
-        $recommended = $this->applySubjectSearch($recommendedQuery, $search)->get(['id', 'code', 'name', 'units', 'department_id']);
-
-        $otherQuery = Subject::query()
-            ->where('is_active', true)
-            ->when($recommendedIds !== [], fn ($q) => $q->whereNotIn('id', $recommendedIds))
-            ->when(! $browseAll, function ($q) use ($departmentId) {
-                $q->where(function ($inner) use ($departmentId) {
-                    $inner->where('department_id', $departmentId)
-                        ->orWhereNull('department_id');
-                });
-            })
-            ->orderBy('code');
-
-        $other = $this->applySubjectSearch($otherQuery, $search)->limit(100)->get(['id', 'code', 'name', 'units', 'department_id']);
-
-        return [
-            'recommended' => $recommended,
-            'other' => $other,
-        ];
+        return $this->offerings->offeringsForRegistration($sectionId, $departmentId, $search, $browseAll);
     }
 
     /**
-     * @param  array<int, int>  $subjectIds
+     * @param  array<int, int|string>  $offeringIds
      */
     public function syncDeclaredEnrollments(
         Student $student,
-        array $subjectIds,
+        array $offeringIds,
         ?int $academicYearId = null,
         ?int $semesterId = null,
         ?User $actor = null,
@@ -128,21 +76,34 @@ class StudentSubjectEnrollmentService
 
         abort_unless($academicYearId && $semesterId, 422, 'Unable to determine the current academic period.');
 
-        $subjectIds = $this->validateSubjectIds($subjectIds);
+        $offerings = $this->validateOfferingIds($offeringIds);
+
+        $invalidTerm = $offerings->first(function (SubjectOffering $offering) use ($academicYearId, $semesterId) {
+            return (int) $offering->academic_year_id !== (int) $academicYearId
+                || (int) $offering->semester_id !== (int) $semesterId;
+        });
+
+        if ($invalidTerm) {
+            throw ValidationException::withMessages([
+                'subject_offering_ids' => 'One or more selected subject offerings are not available for the current academic period.',
+            ]);
+        }
+
         $initialStatus = $this->subjectVerificationRequired()
             ? StudentSubjectEnrollmentStatus::PendingVerification
             : StudentSubjectEnrollmentStatus::Verified;
 
-        DB::transaction(function () use ($student, $subjectIds, $academicYearId, $semesterId, $initialStatus, $actor) {
-            foreach ($subjectIds as $subjectId) {
+        DB::transaction(function () use ($student, $offerings, $academicYearId, $semesterId, $initialStatus, $actor) {
+            foreach ($offerings as $offering) {
                 StudentSubject::query()->updateOrCreate(
                     [
                         'student_id' => $student->id,
-                        'subject_id' => $subjectId,
+                        'subject_offering_id' => $offering->id,
                         'academic_year_id' => $academicYearId,
                         'semester_id' => $semesterId,
                     ],
                     [
+                        'subject_id' => $offering->subject_id,
                         'status' => $initialStatus,
                         'verified_at' => $initialStatus === StudentSubjectEnrollmentStatus::Verified ? now() : null,
                         'verified_by' => $initialStatus === StudentSubjectEnrollmentStatus::Verified ? $actor?->id : null,
@@ -160,7 +121,7 @@ class StudentSubjectEnrollmentService
                 Student::class,
                 $student->id,
                 [
-                    'subject_ids' => $subjectIds,
+                    'subject_offering_ids' => $offerings->pluck('id')->all(),
                     'academic_year_id' => $academicYearId,
                     'semester_id' => $semesterId,
                     'status' => $initialStatus->value,
@@ -187,12 +148,13 @@ class StudentSubjectEnrollmentService
             [
                 'student_id' => $enrollment->student?->student_id,
                 'subject_id' => $enrollment->subject_id,
+                'subject_offering_id' => $enrollment->subject_offering_id,
                 'academic_year_id' => $enrollment->academic_year_id,
                 'semester_id' => $enrollment->semester_id,
             ],
         );
 
-        return $enrollment->fresh(['subject', 'student']);
+        return $enrollment->fresh(['subject', 'subjectOffering.instructor.user', 'subjectOffering.section', 'student']);
     }
 
     public function rejectEnrollment(StudentSubject $enrollment, User $admin, ?string $reason = null): StudentSubject
@@ -213,11 +175,12 @@ class StudentSubjectEnrollmentService
             [
                 'student_id' => $enrollment->student?->student_id,
                 'subject_id' => $enrollment->subject_id,
+                'subject_offering_id' => $enrollment->subject_offering_id,
                 'reason' => $enrollment->rejection_reason,
             ],
         );
 
-        return $enrollment->fresh(['subject', 'student']);
+        return $enrollment->fresh(['subject', 'subjectOffering.instructor.user', 'subjectOffering.section', 'student']);
     }
 
     public function verifyAllForStudent(Student $student, User $admin, ?int $academicYearId = null, ?int $semesterId = null): int
@@ -243,21 +206,24 @@ class StudentSubjectEnrollmentService
         return $count;
     }
 
-    public function addEnrollment(Student $student, int $subjectId, User $admin, ?int $academicYearId = null, ?int $semesterId = null): StudentSubject
+    public function addEnrollment(Student $student, int $offeringId, User $admin, ?int $academicYearId = null, ?int $semesterId = null): StudentSubject
     {
         $academicYearId ??= $this->academic->currentAcademicYear()?->id;
         $semesterId ??= $this->academic->currentSemester()?->id;
 
-        $this->validateSubjectIds([$subjectId]);
+        $offering = $this->validateOfferingIds([$offeringId])->first();
+
+        abort_unless($offering, 422);
 
         $enrollment = StudentSubject::query()->updateOrCreate(
             [
                 'student_id' => $student->id,
-                'subject_id' => $subjectId,
+                'subject_offering_id' => $offering->id,
                 'academic_year_id' => $academicYearId,
                 'semester_id' => $semesterId,
             ],
             [
+                'subject_id' => $offering->subject_id,
                 'status' => StudentSubjectEnrollmentStatus::Verified,
                 'verified_at' => now(),
                 'verified_by' => $admin->id,
@@ -273,13 +239,14 @@ class StudentSubjectEnrollmentService
             $enrollment->id,
             [
                 'student_id' => $student->student_id,
-                'subject_id' => $subjectId,
+                'subject_id' => $offering->subject_id,
+                'subject_offering_id' => $offering->id,
                 'academic_year_id' => $academicYearId,
                 'semester_id' => $semesterId,
             ],
         );
 
-        return $enrollment->load('subject');
+        return $enrollment->load(['subject', 'subjectOffering.instructor.user', 'subjectOffering.section']);
     }
 
     public function removeEnrollment(StudentSubject $enrollment, User $admin): void
@@ -287,6 +254,7 @@ class StudentSubjectEnrollmentService
         $details = [
             'student_id' => $enrollment->student?->student_id,
             'subject_id' => $enrollment->subject_id,
+            'subject_offering_id' => $enrollment->subject_offering_id,
             'academic_year_id' => $enrollment->academic_year_id,
             'semester_id' => $enrollment->semester_id,
         ];
@@ -304,13 +272,13 @@ class StudentSubjectEnrollmentService
     }
 
     /**
-     * @param  array<int, int>  $addSubjectIds
-     * @param  array<int, int>  $removeSubjectIds
+     * @param  array<int, int|string>  $addOfferingIds
+     * @param  array<int, int|string>  $removeOfferingIds
      */
     public function submitChangeRequest(
         Student $student,
-        array $addSubjectIds,
-        array $removeSubjectIds,
+        array $addOfferingIds,
+        array $removeOfferingIds,
         ?string $reason = null,
         ?int $academicYearId = null,
         ?int $semesterId = null,
@@ -318,16 +286,16 @@ class StudentSubjectEnrollmentService
         $academicYearId ??= $this->academic->currentAcademicYear()?->id;
         $semesterId ??= $this->academic->currentSemester()?->id;
 
-        $addSubjectIds = collect($addSubjectIds)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
-        $removeSubjectIds = collect($removeSubjectIds)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+        $addOfferingIds = collect($addOfferingIds)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+        $removeOfferingIds = collect($removeOfferingIds)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
 
-        if ($addSubjectIds !== []) {
-            $addSubjectIds = $this->validateSubjectIds($addSubjectIds);
+        if ($addOfferingIds !== []) {
+            $this->validateOfferingIds($addOfferingIds);
         }
 
-        if ($addSubjectIds === [] && $removeSubjectIds === []) {
+        if ($addOfferingIds === [] && $removeOfferingIds === []) {
             throw ValidationException::withMessages([
-                'subject_ids' => 'Please select at least one subject to add or remove.',
+                'subject_offering_ids' => 'Please select at least one subject offering to add or remove.',
             ]);
         }
 
@@ -346,8 +314,8 @@ class StudentSubjectEnrollmentService
             'academic_year_id' => $academicYearId,
             'semester_id' => $semesterId,
             'status' => StudentSubjectChangeRequestStatus::Pending,
-            'add_subject_ids' => $addSubjectIds,
-            'remove_subject_ids' => $removeSubjectIds,
+            'add_subject_offering_ids' => $addOfferingIds,
+            'remove_subject_offering_ids' => $removeOfferingIds,
             'reason' => filled($reason) ? trim($reason) : null,
         ]);
 
@@ -358,8 +326,8 @@ class StudentSubjectEnrollmentService
             StudentSubjectChangeRequest::class,
             $request->id,
             [
-                'add_subject_ids' => $addSubjectIds,
-                'remove_subject_ids' => $removeSubjectIds,
+                'add_subject_offering_ids' => $addOfferingIds,
+                'remove_subject_offering_ids' => $removeOfferingIds,
                 'academic_year_id' => $academicYearId,
                 'semester_id' => $semesterId,
             ],
@@ -373,10 +341,10 @@ class StudentSubjectEnrollmentService
         abort_unless($request->status === StudentSubjectChangeRequestStatus::Pending, 422);
 
         DB::transaction(function () use ($request, $admin, $notes) {
-            foreach ($request->remove_subject_ids ?? [] as $subjectId) {
+            foreach ($request->remove_subject_offering_ids ?? [] as $offeringId) {
                 $enrollment = StudentSubject::query()
                     ->where('student_id', $request->student_id)
-                    ->where('subject_id', (int) $subjectId)
+                    ->where('subject_offering_id', (int) $offeringId)
                     ->where('academic_year_id', $request->academic_year_id)
                     ->where('semester_id', $request->semester_id)
                     ->first();
@@ -386,10 +354,10 @@ class StudentSubjectEnrollmentService
                 }
             }
 
-            foreach ($request->add_subject_ids ?? [] as $subjectId) {
+            foreach ($request->add_subject_offering_ids ?? [] as $offeringId) {
                 $this->addEnrollment(
                     $request->student,
-                    (int) $subjectId,
+                    (int) $offeringId,
                     $admin,
                     $request->academic_year_id,
                     $request->semester_id,
@@ -435,6 +403,25 @@ class StudentSubjectEnrollmentService
         );
     }
 
+    public function isEnrolledInOffering(
+        Student $student,
+        int $offeringId,
+        int $academicYearId,
+        int $semesterId,
+        ?bool $verificationRequired = null,
+    ): bool {
+        $verificationRequired ??= $this->subjectVerificationRequired();
+
+        $enrollment = StudentSubject::query()
+            ->where('student_id', $student->id)
+            ->where('subject_offering_id', $offeringId)
+            ->where('academic_year_id', $academicYearId)
+            ->where('semester_id', $semesterId)
+            ->first();
+
+        return $enrollment?->isActiveForExamAccess($verificationRequired) ?? false;
+    }
+
     public function isEnrolledInSubject(
         Student $student,
         int $subjectId,
@@ -457,6 +444,28 @@ class StudentSubjectEnrollmentService
     /**
      * @return Collection<int, int>
      */
+    public function activeOfferingIds(
+        Student $student,
+        int $academicYearId,
+        int $semesterId,
+        ?bool $verificationRequired = null,
+    ): Collection {
+        $verificationRequired ??= $this->subjectVerificationRequired();
+
+        return $student->subjectEnrollments()
+            ->where('academic_year_id', $academicYearId)
+            ->where('semester_id', $semesterId)
+            ->get()
+            ->filter(fn (StudentSubject $enrollment) => $enrollment->isActiveForExamAccess($verificationRequired))
+            ->pluck('subject_offering_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
     public function activeSubjectIds(
         Student $student,
         int $academicYearId,
@@ -474,20 +483,5 @@ class StudentSubjectEnrollmentService
             ->pluck('subject_id')
             ->map(fn ($id) => (int) $id)
             ->values();
-    }
-
-    protected function applySubjectSearch($query, ?string $search)
-    {
-        if (! filled($search)) {
-            return $query;
-        }
-
-        $term = '%'.trim($search).'%';
-
-        return $query->where(function ($q) use ($term) {
-            $q->where('code', 'like', $term)
-                ->orWhere('name', 'like', $term)
-                ->orWhere('description', 'like', $term);
-        });
     }
 }

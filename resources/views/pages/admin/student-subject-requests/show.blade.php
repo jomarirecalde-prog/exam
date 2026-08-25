@@ -23,21 +23,31 @@
 
                 <x-ui.card class="ui-card-pad">
                     <h2 class="text-base font-semibold">Requested Changes</h2>
-                    @if (! empty($changeRequest->add_subject_ids))
-                        <h3 class="mt-4 text-sm font-semibold text-muted">Add Subjects</h3>
-                        <ul class="mt-2 space-y-1 text-sm">
-                            @foreach ($changeRequest->add_subject_ids as $subjectId)
-                                @php $subject = $subjects->get($subjectId); @endphp
-                                <li>+ {{ $subject?->code }} — {{ $subject?->name ?: 'Unknown subject' }}</li>
+                    @if (! empty($changeRequest->add_subject_offering_ids))
+                        <h3 class="mt-4 text-sm font-semibold text-muted">Add Subject Offerings</h3>
+                        <ul class="mt-2 space-y-2 text-sm">
+                            @foreach ($changeRequest->add_subject_offering_ids as $offeringId)
+                                @php $offering = $offerings->get($offeringId); @endphp
+                                <li>
+                                    + {{ $offering?->subject?->code }} — {{ $offering?->subject?->name ?: 'Unknown subject' }}
+                                    <span class="block text-muted">
+                                        {{ $offering?->instructorDisplayName() }} · {{ $offering?->sectionDisplayName() }}
+                                    </span>
+                                </li>
                             @endforeach
                         </ul>
                     @endif
-                    @if (! empty($changeRequest->remove_subject_ids))
-                        <h3 class="mt-4 text-sm font-semibold text-muted">Remove Subjects</h3>
-                        <ul class="mt-2 space-y-1 text-sm">
-                            @foreach ($changeRequest->remove_subject_ids as $subjectId)
-                                @php $subject = $subjects->get($subjectId); @endphp
-                                <li>− {{ $subject?->code }} — {{ $subject?->name ?: 'Unknown subject' }}</li>
+                    @if (! empty($changeRequest->remove_subject_offering_ids))
+                        <h3 class="mt-4 text-sm font-semibold text-muted">Remove Subject Offerings</h3>
+                        <ul class="mt-2 space-y-2 text-sm">
+                            @foreach ($changeRequest->remove_subject_offering_ids as $offeringId)
+                                @php $offering = $offerings->get($offeringId); @endphp
+                                <li>
+                                    − {{ $offering?->subject?->code }} — {{ $offering?->subject?->name ?: 'Unknown subject' }}
+                                    <span class="block text-muted">
+                                        {{ $offering?->instructorDisplayName() }} · {{ $offering?->sectionDisplayName() }}
+                                    </span>
+                                </li>
                             @endforeach
                         </ul>
                     @endif

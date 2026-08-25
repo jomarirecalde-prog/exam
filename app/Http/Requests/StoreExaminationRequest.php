@@ -29,6 +29,7 @@ class StoreExaminationRequest extends FormRequest
                 Rule::exists('semesters', 'id')->where('academic_year_id', $this->integer('academic_year_id')),
             ],
             'subject_id' => ['required', 'exists:subjects,id'],
+            'subject_offering_id' => ['nullable', 'integer', 'exists:subject_instructor,id'],
             'program_id' => ['required', 'exists:programs,id'],
             'year_level_id' => [
                 'required',

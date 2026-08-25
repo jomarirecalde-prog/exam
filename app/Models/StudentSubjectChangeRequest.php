@@ -15,6 +15,8 @@ class StudentSubjectChangeRequest extends Model
         'status',
         'add_subject_ids',
         'remove_subject_ids',
+        'add_subject_offering_ids',
+        'remove_subject_offering_ids',
         'reason',
         'admin_notes',
         'reviewed_by',
@@ -27,6 +29,8 @@ class StudentSubjectChangeRequest extends Model
             'status' => StudentSubjectChangeRequestStatus::class,
             'add_subject_ids' => 'array',
             'remove_subject_ids' => 'array',
+            'add_subject_offering_ids' => 'array',
+            'remove_subject_offering_ids' => 'array',
             'reviewed_at' => 'datetime',
         ];
     }

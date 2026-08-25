@@ -33,8 +33,8 @@ class StoreStudentRegistrationRequest extends FormRequest
             'program_id' => ['required', 'integer', 'exists:programs,id'],
             'year_level_id' => ['required', 'integer', 'exists:year_levels,id'],
             'section_id' => ['required', 'integer', 'exists:sections,id'],
-            'subject_ids' => ['required', 'array', 'min:1'],
-            'subject_ids.*' => ['required', 'integer', 'distinct', 'exists:subjects,id'],
+            'subject_offering_ids' => ['required', 'array', 'min:1'],
+            'subject_offering_ids.*' => ['required', 'integer', 'distinct', 'exists:subject_instructor,id'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ];
     }
@@ -44,9 +44,9 @@ class StoreStudentRegistrationRequest extends FormRequest
         return [
             'student_id.unique' => 'An account using this Student ID already exists.',
             'email.unique' => 'An account using this email address already exists. Please sign in or recover your account.',
-            'subject_ids.required' => 'Please select at least one enrolled subject.',
-            'subject_ids.min' => 'Please select at least one enrolled subject.',
-            'subject_ids.*.exists' => 'One or more selected subjects are invalid or unavailable.',
+            'subject_offering_ids.required' => 'Please select at least one enrolled subject offering.',
+            'subject_offering_ids.min' => 'Please select at least one enrolled subject offering.',
+            'subject_offering_ids.*.exists' => 'One or more selected subject offerings are invalid or unavailable.',
         ];
     }
 
@@ -76,7 +76,7 @@ class StoreStudentRegistrationRequest extends FormRequest
             }
 
             try {
-                app(StudentSubjectEnrollmentService::class)->validateSubjectIds($this->input('subject_ids', []));
+                app(StudentSubjectEnrollmentService::class)->validateOfferingIds($this->input('subject_offering_ids', []));
             } catch (\Illuminate\Validation\ValidationException $exception) {
                 foreach ($exception->errors() as $field => $messages) {
                     foreach ($messages as $message) {
@@ -90,7 +90,7 @@ class StoreStudentRegistrationRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'subject_ids' => array_values(array_unique(array_filter(array_map('intval', (array) $this->input('subject_ids', []))))),
+            'subject_offering_ids' => array_values(array_unique(array_filter(array_map('intval', (array) $this->input('subject_offering_ids', []))))),
         ]);
     }
 }

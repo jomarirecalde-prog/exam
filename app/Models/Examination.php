@@ -19,7 +19,7 @@ class Examination extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'uuid', 'code', 'subject_id', 'section_id', 'instructor_id',
+        'uuid', 'code', 'subject_id', 'subject_offering_id', 'section_id', 'instructor_id',
         'academic_year_id', 'semester_id', 'examination_period', 'title',
         'description', 'instructions', 'duration_minutes', 'total_items',
         'passing_score', 'passing_percentage', 'examination_date',
@@ -49,6 +49,11 @@ class Examination extends Model
     public function subject(): BelongsTo
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    public function subjectOffering(): BelongsTo
+    {
+        return $this->belongsTo(SubjectOffering::class, 'subject_offering_id');
     }
 
     public function section(): BelongsTo

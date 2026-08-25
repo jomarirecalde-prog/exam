@@ -398,6 +398,7 @@ window.examWizard = function examWizard(config = {}) {
         storeUrl: config.storeUrl || '',
         updateUrl: config.updateUrl || '',
         sectionsUrl: config.sectionsUrl || '',
+        offeringsUrl: config.offeringsUrl || '',
         importQuestionsUrl: config.importQuestionsUrl || '',
         questionCsvTemplateUrl: config.questionCsvTemplateUrl || '',
         indexUrl: config.indexUrl || '',
@@ -407,8 +408,10 @@ window.examWizard = function examWizard(config = {}) {
         programs: config.programs || [],
         yearLevels: config.yearLevels || [],
         availableSections: [],
+        availableOfferings: [],
         selectedSections: config.selectedSections || [],
         sectionsLoading: false,
+        offeringsLoading: false,
         sectionQuery: '',
         sectionMenuOpen: false,
         sectionAbort: null,
@@ -445,6 +448,7 @@ window.examWizard = function examWizard(config = {}) {
             academicYearId: incomingForm.academicYearId ? String(incomingForm.academicYearId) : '',
             semesterId: incomingForm.semesterId ? String(incomingForm.semesterId) : '',
             subjectId: incomingForm.subjectId ? String(incomingForm.subjectId) : '',
+            subjectOfferingId: incomingForm.subjectOfferingId ? String(incomingForm.subjectOfferingId) : '',
             programId: incomingForm.programId ? String(incomingForm.programId) : '',
             yearLevelId: incomingForm.yearLevelId ? String(incomingForm.yearLevelId) : '',
             sectionIds: (incomingForm.sectionIds || []).map((id) => Number(id)),
@@ -460,6 +464,7 @@ window.examWizard = function examWizard(config = {}) {
         init() {
             if (this.filtersReady()) {
                 this.fetchSections({ prune: false });
+                this.fetchOfferings({ preserveSelection: true });
             }
         },
         get filteredSemesters() {
@@ -530,7 +535,62 @@ window.examWizard = function examWizard(config = {}) {
         },
         onFilterChange() {
             this.errors = { ...this.errors, section_ids: null };
+            this.form.subjectOfferingId = '';
             this.fetchSections({ prune: true });
+            this.fetchOfferings({ preserveSelection: false });
+        },
+        onOfferingChange() {
+            const offering = this.availableOfferings.find((item) => String(item.id) === String(this.form.subjectOfferingId));
+            if (offering?.section_id && !this.form.sectionIds.includes(Number(offering.section_id))) {
+                const section = {
+                    id: offering.section_id,
+                    name: offering.section_name,
+                    code: offering.section_code,
+                    label: offering.section_name,
+                };
+                this.selectSection(section);
+            }
+        },
+        selectedOfferingLabel() {
+            const offering = this.availableOfferings.find((item) => String(item.id) === String(this.form.subjectOfferingId));
+            if (!offering) {
+                return '';
+            }
+            return `${offering.code} — ${offering.name}`;
+        },
+        async fetchOfferings({ preserveSelection = false } = {}) {
+            if (!this.form.academicYearId || !this.form.semesterId || !this.form.subjectId) {
+                this.availableOfferings = [];
+                if (!preserveSelection) {
+                    this.form.subjectOfferingId = '';
+                }
+                return;
+            }
+
+            this.offeringsLoading = true;
+
+            try {
+                const params = new URLSearchParams({
+                    academic_year_id: this.form.academicYearId,
+                    semester_id: this.form.semesterId,
+                    subject_id: this.form.subjectId,
+                });
+                const response = await fetch(`${this.offeringsUrl}?${params.toString()}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                this.availableOfferings = data.offerings || [];
+                if (!preserveSelection || !this.availableOfferings.some((item) => String(item.id) === String(this.form.subjectOfferingId))) {
+                    this.form.subjectOfferingId = '';
+                }
+            } catch (error) {
+                this.availableOfferings = [];
+                if (!preserveSelection) {
+                    this.form.subjectOfferingId = '';
+                }
+            } finally {
+                this.offeringsLoading = false;
+            }
         },
         openSectionMenu() {
             if (!this.filtersReady()) {
@@ -652,6 +712,7 @@ window.examWizard = function examWizard(config = {}) {
                 academic_year_id: this.form.academicYearId,
                 semester_id: this.form.semesterId,
                 subject_id: this.form.subjectId,
+                subject_offering_id: this.form.subjectOfferingId || null,
                 program_id: this.form.programId,
                 year_level_id: this.form.yearLevelId,
                 section_ids: this.form.sectionIds,
@@ -939,7 +1000,7 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         sections: [],
         recommendedSubjects: [],
         otherSubjects: [],
-        subjectCatalog: {},
+        offeringCatalog: {},
         programsLoading: false,
         yearLevelsLoading: false,
         sectionsLoading: false,
@@ -971,7 +1032,7 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             program_id: old.program_id ? String(old.program_id) : '',
             year_level_id: old.year_level_id ? String(old.year_level_id) : '',
             section_id: old.section_id ? String(old.section_id) : '',
-            subject_ids: Array.isArray(old.subject_ids) ? old.subject_ids.map(String) : [],
+            subject_offering_ids: Array.isArray(old.subject_offering_ids) ? old.subject_offering_ids.map(String) : [],
             password: '',
             password_confirmation: '',
         },
@@ -1005,7 +1066,7 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             const personal = ['first_name', 'last_name', 'phone', 'email'];
             const academic = ['student_id', 'department_id', 'program_id', 'year_level_id'];
             const section = ['section_id'];
-            const subjects = ['subject_ids'];
+            const subjects = ['subject_offering_ids'];
             const account = ['password', 'password_confirmation'];
 
             if (account.some((field) => serverErrors[field])) return 5;
@@ -1061,9 +1122,9 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             const section = this.sections.find((item) => String(item.id) === String(this.form.section_id));
             return section?.name || section?.code || '—';
         },
-        get selectedSubjectsList() {
-            return this.form.subject_ids
-                .map((id) => this.subjectCatalog[String(id)])
+        get selectedOfferingsList() {
+            return this.form.subject_offering_ids
+                .map((id) => this.offeringCatalog[String(id)])
                 .filter(Boolean);
         },
         validateStep1() {
@@ -1089,8 +1150,8 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         },
         validateStep4() {
             this.errors = {};
-            if (this.form.subject_ids.length === 0) {
-                this.errors.subject_ids = 'Please select at least one enrolled subject.';
+            if (this.form.subject_offering_ids.length === 0) {
+                this.errors.subject_offering_ids = 'Please select at least one enrolled subject offering.';
             }
             return Object.keys(this.errors).length === 0;
         },
@@ -1124,31 +1185,31 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             }
             this.submitting = true;
         },
-        isSubjectSelected(subjectId) {
-            return this.form.subject_ids.includes(String(subjectId));
+        isOfferingSelected(offeringId) {
+            return this.form.subject_offering_ids.includes(String(offeringId));
         },
-        toggleSubject(subjectId) {
-            const id = String(subjectId);
-            if (this.isSubjectSelected(id)) {
-                this.form.subject_ids = this.form.subject_ids.filter((item) => item !== id);
+        toggleOffering(offeringId) {
+            const id = String(offeringId);
+            if (this.isOfferingSelected(id)) {
+                this.form.subject_offering_ids = this.form.subject_offering_ids.filter((item) => item !== id);
             } else {
-                this.form.subject_ids = [...this.form.subject_ids, id];
+                this.form.subject_offering_ids = [...this.form.subject_offering_ids, id];
             }
         },
         toggleBrowseAll() {
             this.browseAllSubjects = !this.browseAllSubjects;
             this.fetchSubjects();
         },
-        indexSubjects(subjects) {
-            subjects.forEach((subject) => {
-                this.subjectCatalog[String(subject.id)] = subject;
+        indexOfferings(offerings) {
+            offerings.forEach((offering) => {
+                this.offeringCatalog[String(offering.id)] = offering;
             });
         },
         async onDepartmentChange() {
             this.form.program_id = '';
             this.form.year_level_id = '';
             this.form.section_id = '';
-            this.form.subject_ids = [];
+            this.form.subject_offering_ids = [];
             this.programs = [];
             this.yearLevels = [];
             this.sections = [];
@@ -1159,7 +1220,7 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         async onProgramChange() {
             this.form.year_level_id = '';
             this.form.section_id = '';
-            this.form.subject_ids = [];
+            this.form.subject_offering_ids = [];
             this.yearLevels = [];
             this.sections = [];
             this.recommendedSubjects = [];
@@ -1168,14 +1229,14 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         },
         async onYearLevelChange() {
             this.form.section_id = '';
-            this.form.subject_ids = [];
+            this.form.subject_offering_ids = [];
             this.sections = [];
             this.recommendedSubjects = [];
             this.otherSubjects = [];
             await this.fetchSections();
         },
         async onSectionChange() {
-            this.form.subject_ids = [];
+            this.form.subject_offering_ids = [];
             this.recommendedSubjects = [];
             this.otherSubjects = [];
             if (this.form.section_id) {
@@ -1262,8 +1323,8 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
                 const data = await response.json();
                 this.recommendedSubjects = data.recommended || [];
                 this.otherSubjects = data.other || [];
-                this.indexSubjects(this.recommendedSubjects);
-                this.indexSubjects(this.otherSubjects);
+                this.indexOfferings(this.recommendedSubjects);
+                this.indexOfferings(this.otherSubjects);
             } catch (error) {
                 this.recommendedSubjects = [];
                 this.otherSubjects = [];

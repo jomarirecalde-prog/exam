@@ -49,7 +49,15 @@ class StudentEnrollmentService
         }
 
         $rows = $student->subjectEnrollments()
-            ->with(['subject.department', 'academicYear', 'semester', 'verifier'])
+            ->with([
+                'subject.department',
+                'subjectOffering.instructor.user',
+                'subjectOffering.section.program',
+                'subjectOffering.section.yearLevel',
+                'academicYear',
+                'semester',
+                'verifier',
+            ])
             ->where('academic_year_id', $academicYearId)
             ->where('semester_id', $semesterId)
             ->get();
@@ -58,48 +66,44 @@ class StudentEnrollmentService
             return $this->legacySectionEnrollments($student, $academicYearId, $semesterId);
         }
 
-        $section = $student->section;
         $academicYear = AcademicYear::query()->find($academicYearId);
         $semester = Semester::query()->find($semesterId);
 
-        $instructorRows = DB::table('subject_instructor')
-            ->where('academic_year_id', $academicYearId)
-            ->where('semester_id', $semesterId)
-            ->whereIn('subject_id', $rows->pluck('subject_id'))
-            ->get();
-
-        $instructors = Instructor::query()
-            ->with(['user', 'department'])
-            ->whereIn('id', $instructorRows->pluck('instructor_id')->unique())
-            ->get()
-            ->keyBy('id');
-
         return $rows
-            ->map(function (StudentSubject $enrollment) use ($student, $section, $instructorRows, $instructors, $academicYear, $semester, $academicYearId, $semesterId) {
+            ->map(function (StudentSubject $enrollment) use ($student, $academicYear, $semester, $academicYearId, $semesterId) {
                 $subject = $enrollment->subject;
+                $offering = $enrollment->subjectOffering;
 
                 if (! $subject) {
                     return null;
                 }
 
-                $assignedInstructors = $instructorRows
-                    ->filter(fn ($row) => (int) $row->subject_id === (int) $subject->id)
-                    ->pluck('instructor_id')
-                    ->unique()
-                    ->map(fn ($id) => $instructors->get($id))
-                    ->filter()
-                    ->values();
+                $section = $offering?->section ?: $student->section;
+                $assignedInstructors = collect($offering?->instructor ? [$offering->instructor] : []);
 
-                $availableExamsCount = Examination::query()
+                $examQuery = Examination::query()
                     ->visibleToStudent($student)
-                    ->where('subject_id', $subject->id)
                     ->where('academic_year_id', $academicYearId)
-                    ->where('semester_id', $semesterId)
-                    ->count();
+                    ->where('semester_id', $semesterId);
+
+                if ($offering?->id) {
+                    $examQuery->where(function ($query) use ($offering, $subject) {
+                        $query->where('subject_offering_id', $offering->id)
+                            ->orWhere(function ($inner) use ($subject) {
+                                $inner->where('subject_id', $subject->id)
+                                    ->whereNull('subject_offering_id');
+                            });
+                    });
+                } else {
+                    $examQuery->where('subject_id', $subject->id);
+                }
+
+                $availableExamsCount = $examQuery->count();
 
                 return [
                     'enrollment' => $enrollment,
                     'subject' => $subject,
+                    'offering' => $offering,
                     'section' => $section,
                     'instructors' => $assignedInstructors,
                     'academic_year' => $academicYear,
@@ -119,9 +123,20 @@ class StudentEnrollmentService
         Subject $subject,
         int $academicYearId,
         int $semesterId,
+        ?int $offeringId = null,
     ): ?array {
         return $this->enrollments($student, $academicYearId, $semesterId)
-            ->first(fn (array $enrollment) => (int) $enrollment['subject']->id === (int) $subject->id);
+            ->first(function (array $enrollment) use ($subject, $offeringId) {
+                if ((int) $enrollment['subject']->id !== (int) $subject->id) {
+                    return false;
+                }
+
+                if ($offeringId) {
+                    return (int) ($enrollment['offering']?->id) === (int) $offeringId;
+                }
+
+                return true;
+            });
     }
 
     public function assertEnrolled(
@@ -217,6 +232,7 @@ class StudentEnrollmentService
                 return [
                     'enrollment' => null,
                     'subject' => $subject,
+                    'offering' => null,
                     'section' => $section,
                     'instructors' => $assignedInstructors,
                     'academic_year' => $academicYear,

@@ -64,6 +64,16 @@
                             <p class="ui-error" x-show="fieldError('subject_id')" x-cloak x-text="fieldError('subject_id')"></p>
                         </x-ui.field>
 
+                        <x-ui.field class="sm:col-span-2" label="Subject Offering / Class" for="subject_offering_id">
+                            <select class="ui-input" id="subject_offering_id" x-model="form.subjectOfferingId" @change="onOfferingChange()" :disabled="!form.subjectId || offeringsLoading">
+                                <option value="" x-text="offeringsLoading ? 'Loading class offerings...' : (availableOfferings.length === 0 && form.subjectId ? 'No class offerings available' : 'Select instructor and section')"></option>
+                                <template x-for="offering in availableOfferings" :key="offering.id">
+                                    <option :value="offering.id" x-text="offering.instructor_name + ' — ' + offering.section_name"></option>
+                                </template>
+                            </select>
+                            <p class="ui-help" x-show="form.subjectOfferingId && selectedOfferingLabel()" x-text="selectedOfferingLabel()"></p>
+                        </x-ui.field>
+
                         <x-ui.field label="Program / Course" for="program_id">
                             <select class="ui-input" id="program_id" x-model="form.programId" @change="onProgramChange()">
                                 <option value="">Select program</option>
