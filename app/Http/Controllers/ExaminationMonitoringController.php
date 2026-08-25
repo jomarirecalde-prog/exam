@@ -61,11 +61,26 @@ class ExaminationMonitoringController extends Controller
         ExaminationAttempt $attempt,
         ExaminationMonitoringService $monitoring,
     ): JsonResponse {
+        $attempt->loadMissing(['examination', 'student.user']);
+
+        $request->merge([
+            'reactivation_reason' => trim((string) $request->input('reactivation_reason', '')),
+        ]);
+
+        $maxWarnings = (int) config('examination.max_violation_warnings', 3);
+
         $validated = $request->validate([
             'reactivation_reason' => ['required', 'string', 'max:1000'],
             'warning_mode' => ['required', 'string', 'in:reset,keep,manual'],
-            'manual_warning_count' => ['nullable', 'integer', 'min:0', 'max:3'],
+            'manual_warning_count' => ['nullable', 'integer', 'min:0', 'max:'.$maxWarnings],
         ]);
+
+        if ($validated['warning_mode'] === 'manual' && ! isset($validated['manual_warning_count'])) {
+            return response()->json([
+                'message' => 'Please enter the warning count to apply after reactivation.',
+                'errors' => ['manual_warning_count' => ['Please enter the warning count to apply after reactivation.']],
+            ], 422);
+        }
 
         try {
             $mode = ReactivationWarningMode::from($validated['warning_mode']);

@@ -40,7 +40,7 @@ class ExaminationAttempt extends Model
 
     public function examination(): BelongsTo
     {
-        return $this->belongsTo(Examination::class);
+        return $this->belongsTo(Examination::class)->withTrashed();
     }
 
     public function student(): BelongsTo
@@ -86,6 +86,33 @@ class ExaminationAttempt extends Model
     public function maxWarnings(): int
     {
         return (int) config('examination.max_violation_warnings', 3);
+    }
+
+    public function isLockedForViolations(): bool
+    {
+        $status = $this->status instanceof AttemptStatus
+            ? $this->status
+            : AttemptStatus::tryFrom((string) $this->getRawOriginal('status'));
+
+        if ($status === AttemptStatus::LockedViolationLimit) {
+            return true;
+        }
+
+        if ($this->locked_at !== null) {
+            return true;
+        }
+
+        return $status === AttemptStatus::InProgress
+            && (int) $this->warning_count >= $this->maxWarnings();
+    }
+
+    public function canBeReactivated(): bool
+    {
+        if ($this->status instanceof AttemptStatus && $this->status->isTerminal()) {
+            return false;
+        }
+
+        return $this->isLockedForViolations();
     }
 
     public function remainingSeconds(): int

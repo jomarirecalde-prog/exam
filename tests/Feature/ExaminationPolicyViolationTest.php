@@ -218,6 +218,39 @@ class ExaminationPolicyViolationTest extends TestCase
             ->assertOk();
     }
 
+    public function test_can_reactivate_attempt_locked_by_warning_count_without_status(): void
+    {
+        ['attempt' => $attempt, 'instructorUser' => $instructorUser] = $this->lockedAttempt();
+
+        $attempt->update([
+            'status' => AttemptStatus::InProgress,
+            'locked_at' => now(),
+            'lock_reason' => 'Maximum violation warnings reached (3/3)',
+        ]);
+
+        $this->actingAs($instructorUser)
+            ->postJson(route('monitoring.reactivate', $attempt), [
+                'reactivation_reason' => 'False detection due to technical issue',
+                'warning_mode' => 'reset',
+            ])
+            ->assertOk()
+            ->assertJsonPath('attempt.status', AttemptStatus::InProgress->value)
+            ->assertJsonPath('attempt.warning_count', 0);
+    }
+
+    public function test_reactivate_rejects_blank_reason(): void
+    {
+        ['attempt' => $attempt, 'instructorUser' => $instructorUser] = $this->lockedAttempt();
+
+        $this->actingAs($instructorUser)
+            ->postJson(route('monitoring.reactivate', $attempt), [
+                'reactivation_reason' => '   ',
+                'warning_mode' => 'reset',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['reactivation_reason']);
+    }
+
     public function test_monitoring_dashboard_returns_attempt_rows(): void
     {
         ['examination' => $examination, 'instructorUser' => $instructorUser] = $this->lockedAttempt();

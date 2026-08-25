@@ -173,6 +173,7 @@
                         class="mt-2 w-full rounded-card border border-line bg-canvas px-3 py-2 text-sm"
                         rows="3"
                         x-model="reactivationReason"
+                        required
                         placeholder="e.g. False detection due to technical issue"
                     ></textarea>
                 </div>

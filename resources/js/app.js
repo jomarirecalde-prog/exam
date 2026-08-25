@@ -1391,7 +1391,13 @@ window.examMonitoring = function examMonitoring(config) {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            throw new Error(data.message || 'Request failed.');
+            const firstFieldError = data.errors
+                ? Object.values(data.errors).flat().find(Boolean)
+                : null;
+            const error = new Error(firstFieldError || data.message || 'Request failed.');
+            error.response = response;
+            error.data = data;
+            throw error;
         }
 
         return data;
@@ -1489,6 +1495,17 @@ window.examMonitoring = function examMonitoring(config) {
                 return;
             }
 
+            const reason = (this.reactivationReason || '').trim();
+            if (!reason) {
+                this.reactivateError = 'A reactivation reason is required.';
+                return;
+            }
+
+            if (this.warningMode === 'manual' && (this.manualWarningCount === null || this.manualWarningCount === '')) {
+                this.reactivateError = 'Please enter the warning count to apply after reactivation.';
+                return;
+            }
+
             this.reactivateError = '';
             this.reactivateSubmitting = true;
 
@@ -1496,9 +1513,11 @@ window.examMonitoring = function examMonitoring(config) {
                 await api(this.attemptUrl(this.reactivateUrlTemplate, this.reactivateRow.attempt_id), {
                     method: 'POST',
                     body: JSON.stringify({
-                        reactivation_reason: this.reactivationReason,
+                        reactivation_reason: reason,
                         warning_mode: this.warningMode,
-                        manual_warning_count: this.warningMode === 'manual' ? this.manualWarningCount : null,
+                        manual_warning_count: this.warningMode === 'manual'
+                            ? Number(this.manualWarningCount)
+                            : null,
                     }),
                 });
                 this.reactivateOpen = false;

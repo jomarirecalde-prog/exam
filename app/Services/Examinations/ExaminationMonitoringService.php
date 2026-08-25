@@ -72,16 +72,21 @@ class ExaminationMonitoringService
     ): ExaminationAttempt {
         $this->assertCanMonitor($user, $attempt->examination);
 
-        if ($attempt->status !== AttemptStatus::LockedViolationLimit) {
+        if (! $attempt->canBeReactivated()) {
             throw new InvalidArgumentException('Only locked examination attempts can be reactivated.');
         }
 
-        if (trim($reason) === '') {
+        $reason = trim($reason);
+        if ($reason === '') {
             throw new InvalidArgumentException('A reactivation reason is required.');
         }
 
         return DB::transaction(function () use ($attempt, $user, $reason, $warningMode, $manualWarningCount) {
             $attempt = ExaminationAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
+
+            if (! $attempt->canBeReactivated()) {
+                throw new InvalidArgumentException('Only locked examination attempts can be reactivated.');
+            }
             $previousWarnings = (int) $attempt->warning_count;
             $maxWarnings = $attempt->maxWarnings();
 
@@ -135,14 +140,18 @@ class ExaminationMonitoringService
             'latest_violation' => $latestViolation?->violation_type->label(),
             'latest_violation_at' => $latestViolation?->detected_at?->format('M j, g:i A'),
             'status' => $attempt->status->value,
-            'status_label' => $this->statusLabel($attempt->status),
-            'can_reactivate' => $attempt->status === AttemptStatus::LockedViolationLimit,
+            'status_label' => $this->statusLabel($attempt->status, $attempt),
+            'can_reactivate' => $attempt->canBeReactivated(),
             'lock_reason' => $attempt->lock_reason,
         ];
     }
 
-    protected function statusLabel(AttemptStatus $status): string
+    protected function statusLabel(AttemptStatus $status, ExaminationAttempt $attempt): string
     {
+        if ($attempt->isLockedForViolations()) {
+            return 'Locked';
+        }
+
         return match ($status) {
             AttemptStatus::InProgress => 'Taking Exam',
             AttemptStatus::LockedViolationLimit => 'Locked',
@@ -151,8 +160,12 @@ class ExaminationMonitoringService
         };
     }
 
-    protected function assertCanMonitor(User $user, Examination $examination): void
+    protected function assertCanMonitor(User $user, ?Examination $examination): void
     {
+        if (! $examination) {
+            throw new InvalidArgumentException('Examination record not found for this attempt.');
+        }
+
         if (! $this->access->canMonitor($user, $examination)) {
             throw new InvalidArgumentException('You are not authorized to monitor this examination.');
         }
