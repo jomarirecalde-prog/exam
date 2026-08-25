@@ -59,7 +59,7 @@ class ExamAttemptSyncService
                     ]);
                     $results[] = [
                         'client_event_uuid' => $uuid,
-                        'status' => 'processed',
+                        'status' => ($result['skipped'] ?? false) ? 'skipped' : 'processed',
                         'result' => $result,
                     ];
                 } catch (SyncConflictException $e) {
@@ -67,6 +67,15 @@ class ExamAttemptSyncService
                         'client_event_uuid' => $uuid,
                         'message' => $e->getMessage(),
                         'details' => $e->details,
+                    ];
+                } catch (InvalidArgumentException $e) {
+                    $results[] = [
+                        'client_event_uuid' => $uuid,
+                        'status' => 'skipped',
+                        'result' => [
+                            'skipped' => true,
+                            'message' => $e->getMessage(),
+                        ],
                     ];
                 }
             }
@@ -112,6 +121,15 @@ class ExamAttemptSyncService
     protected function processAnswerEvent(ExaminationAttempt $attempt, array $payload): array
     {
         if ($attempt->status !== AttemptStatus::InProgress && ! $attempt->pending_submission_at) {
+            if ($attempt->status->isTerminal()) {
+                return [
+                    'question_id' => (int) ($payload['question_id'] ?? 0),
+                    'saved' => false,
+                    'skipped' => true,
+                    'reason' => 'attempt_completed',
+                ];
+            }
+
             throw new InvalidArgumentException('Attempt is not writable.');
         }
 

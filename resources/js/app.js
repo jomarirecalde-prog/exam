@@ -1403,6 +1403,9 @@ window.examTaking = function examTaking(config) {
             if (!this.networkOnline || !this.attemptId || !this.syncUrl) {
                 return;
             }
+            if (this.submitting || this.phase === 'submitting' || this.phase === 'submitted') {
+                return;
+            }
             const reachable = await verifyServerReachable();
             if (!reachable) {
                 return;
@@ -1738,7 +1741,7 @@ window.examTaking = function examTaking(config) {
             }
 
             window.addEventListener('beforeunload', (event) => {
-                if (this.phase !== 'active') {
+                if (this.phase !== 'active' || this.submitting) {
                     return;
                 }
                 this.queueViolationBeacon('PAGE_LEAVE');
@@ -1747,7 +1750,7 @@ window.examTaking = function examTaking(config) {
             });
 
             window.addEventListener('pagehide', () => {
-                if (this.phase === 'active') {
+                if (this.phase === 'active' && !this.submitting) {
                     this.queueViolationBeacon('PAGE_LEAVE');
                 }
             });
@@ -1976,6 +1979,9 @@ window.examTaking = function examTaking(config) {
             }
             this.submitting = true;
             this.submitOpen = false;
+            this.phase = 'submitting';
+            clearInterval(this.timerId);
+            localStorage.removeItem('exam-active-session');
 
             await this.saveAnswersLocally();
 
@@ -1996,8 +2002,6 @@ window.examTaking = function examTaking(config) {
                     pending_submission: true,
                 });
                 this.submitting = false;
-                localStorage.removeItem('exam-active-session');
-                clearInterval(this.timerId);
                 return;
             }
 
@@ -2009,10 +2013,11 @@ window.examTaking = function examTaking(config) {
                         answers: this.buildAnswerPayload(),
                     }),
                 });
-                localStorage.removeItem('exam-active-session');
+                this.phase = 'submitted';
                 if (this.examinationId && this.studentId) {
                     await examOfflineDb.clearExamData(this.examinationId, this.studentId, this.attemptId);
                 }
+                this.pendingSyncCount = 0;
                 window.location.href = data.result_url || this.resultUrl;
             } catch (error) {
                 if (!this.networkOnline || error.message?.includes('network')) {
@@ -2021,7 +2026,10 @@ window.examTaking = function examTaking(config) {
                     this.submitting = false;
                     return;
                 }
+                this.phase = 'active';
                 this.submitting = false;
+                localStorage.setItem('exam-active-session', '1');
+                this.startTimer();
                 window.toast?.(error.message || 'Unable to submit examination.', 'error');
             }
         },

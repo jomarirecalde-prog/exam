@@ -70,7 +70,11 @@ export async function syncAttempt(attemptId, syncUrl) {
 
     for (const result of data.results || []) {
         const event = pending.find((e) => e.client_event_uuid === result.client_event_uuid);
-        if (event) {
+        if (!event) {
+            continue;
+        }
+        const status = result.status || 'processed';
+        if (status === 'processed' || status === 'duplicate' || status === 'skipped') {
             await markEventSynced(event.id, result.result);
             if (result.result?.question_id) {
                 await examOfflineDb.markAnswerSynced(attemptId, result.result.question_id);

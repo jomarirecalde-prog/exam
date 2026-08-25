@@ -134,4 +134,96 @@ class OfflineExamSyncTest extends TestCase
         $this->assertDatabaseCount('exam_sync_events', 1);
         $this->assertDatabaseCount('student_answers', 1);
     }
+
+    public function test_sync_skips_answer_events_after_attempt_is_submitted(): void
+    {
+        $department = Department::create(['code' => 'CS', 'name' => 'CS', 'is_active' => true]);
+        $program = Program::create(['department_id' => $department->id, 'code' => 'BSCS', 'name' => 'BSCS', 'is_active' => true]);
+        $yearLevel = YearLevel::create(['program_id' => $program->id, 'name' => 'Year 1', 'level' => 1, 'is_active' => true]);
+        $year = AcademicYear::create(['name' => '2025-2026', 'is_active' => true, 'is_current' => true]);
+        $semester = Semester::create(['academic_year_id' => $year->id, 'name' => 'First', 'order' => 1, 'is_active' => true, 'is_current' => true]);
+        $subject = Subject::create(['code' => 'CS101', 'name' => 'Intro', 'is_active' => true]);
+        $section = Section::create([
+            'program_id' => $program->id,
+            'year_level_id' => $yearLevel->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'code' => 'A',
+            'name' => 'Section A',
+            'is_active' => true,
+        ]);
+
+        $studentUser = User::factory()->create();
+        $studentUser->assignRole('student');
+        $student = Student::create([
+            'user_id' => $studentUser->id,
+            'student_id' => '2026-0002',
+            'section_id' => $section->id,
+        ]);
+
+        $examination = Examination::create([
+            'subject_id' => $subject->id,
+            'academic_year_id' => $year->id,
+            'semester_id' => $semester->id,
+            'examination_period' => ExaminationPeriod::Midterm,
+            'title' => 'Offline Sync Test Submitted',
+            'duration_minutes' => 60,
+            'status' => ExamStatus::Published,
+            'access_mode' => ExaminationAccessMode::SubjectAndSections,
+            'needs_section_review' => false,
+            'current_version' => 1,
+        ]);
+        $examination->sections()->attach($section->id);
+
+        ExaminationSetting::create([
+            'examination_id' => $examination->id,
+            'offline_examination_mode' => OfflineExaminationMode::Allowed,
+            'allow_offline_continuation' => true,
+            'allow_pending_offline_submission' => true,
+        ]);
+
+        ExaminationVersion::create([
+            'examination_id' => $examination->id,
+            'version_number' => 1,
+        ]);
+        $version = ExaminationVersion::first();
+
+        $question = Question::create([
+            'uuid' => (string) Str::uuid(),
+            'subject_id' => $subject->id,
+            'question_text' => 'Sample?',
+            'type' => QuestionType::MultipleChoice,
+            'points' => 1,
+        ]);
+
+        $attempt = ExaminationAttempt::create([
+            'uuid' => (string) Str::uuid(),
+            'examination_id' => $examination->id,
+            'examination_version_id' => $version->id,
+            'student_id' => $student->id,
+            'status' => AttemptStatus::Submitted,
+            'started_at' => now()->subHour(),
+            'submitted_at' => now(),
+            'expires_at' => now()->subMinutes(30),
+            'offline_enabled' => true,
+            'authorized_device_id' => 'device-test-2',
+        ]);
+
+        $sync = app(ExamAttemptSyncService::class);
+
+        $result = $sync->syncEvents($attempt, [[
+            'client_event_uuid' => '660e8400-e29b-41d4-a716-446655440001',
+            'event_type' => 'answer_updated',
+            'payload' => [
+                'question_id' => $question->id,
+                'answer' => 'B',
+                'is_flagged' => false,
+                'client_revision' => '1000',
+            ],
+        ]], 'device-test-2');
+
+        $this->assertSame('skipped', $result['results'][0]['status'] ?? null);
+        $this->assertTrue($result['results'][0]['result']['skipped'] ?? false);
+        $this->assertDatabaseCount('student_answers', 0);
+    }
 }

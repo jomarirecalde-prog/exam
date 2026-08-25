@@ -224,6 +224,12 @@ export const examOfflineDb = {
         }
         await remove(STORES.timerState, attemptId);
         await remove(STORES.attemptSessions, attemptId);
+        const queue = await getAll(STORES.syncQueue);
+        for (const event of queue) {
+            if (event.exam_attempt_id === attemptId) {
+                await remove(STORES.syncQueue, event.id);
+            }
+        }
     },
 
     async estimateStorageAvailable() {

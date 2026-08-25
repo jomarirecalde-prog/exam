@@ -66,4 +66,20 @@ export async function getQueueSummary() {
     };
 }
 
-export default { enqueueSyncEvent, getPendingEvents, markEventSynced, markEventFailed, getQueueSummary };
+export async function clearSyncQueueForAttempt(attemptId) {
+    const all = await examOfflineDb.getAll(examOfflineDb.STORES.syncQueue);
+    for (const event of all) {
+        if (event.exam_attempt_id === attemptId) {
+            await examOfflineDb.remove(examOfflineDb.STORES.syncQueue, event.id);
+        }
+    }
+}
+
+export default {
+    enqueueSyncEvent,
+    getPendingEvents,
+    markEventSynced,
+    markEventFailed,
+    getQueueSummary,
+    clearSyncQueueForAttempt,
+};
