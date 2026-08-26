@@ -3048,10 +3048,14 @@ window.toast = (message, type = 'success') => window.appToast(message, type);
 window.studentRegistrationWizard = function studentRegistrationWizard(config = {}) {
     const old = config.old || {};
     const serverErrors = config.errors || {};
+    const googleProfile = config.googleProfile || null;
+    const googleMode = Boolean(config.googleMode);
 
     return {
         step: 1,
         submitting: false,
+        googleMode,
+        googleProfile,
         showPassword: false,
         showConfirmPassword: false,
         departments: config.departments || [],
@@ -3078,14 +3082,14 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             { id: 5, label: 'Review' },
         ],
         form: {
-            first_name: old.first_name || '',
+            first_name: old.first_name || googleProfile?.first_name || '',
             middle_name: old.middle_name || '',
-            last_name: old.last_name || '',
+            last_name: old.last_name || googleProfile?.last_name || '',
             suffix: old.suffix || '',
             sex: old.sex || '',
             date_of_birth: old.date_of_birth || '',
             phone: old.phone || '',
-            email: old.email || '',
+            email: old.email || googleProfile?.email || '',
             home_address: old.home_address || '',
             student_id: old.student_id || '',
             department_id: old.department_id ? String(old.department_id) : '',
@@ -3217,6 +3221,9 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
         },
         validateStep5() {
             this.errors = {};
+            if (this.googleMode && !this.form.password) {
+                return true;
+            }
             if (!this.form.password) this.errors.password = 'Password is required.';
             if (this.form.password !== this.form.password_confirmation) {
                 this.errors.password_confirmation = 'Password confirmation does not match.';
@@ -3408,6 +3415,72 @@ window.studentRegistrationWizard = function studentRegistrationWizard(config = {
             } finally {
                 this.subjectsLoading = false;
             }
+        },
+    };
+};
+
+window.googleClassroomImport = function googleClassroomImport(config = {}) {
+    return {
+        matches: config.matches || [],
+        manualOfferings: config.manualOfferings || { recommended: [], other: [] },
+        selections: [],
+        manualSelections: {},
+        submitting: false,
+        capitalize(value) {
+            if (!value) return '';
+            return value.charAt(0).toUpperCase() + value.slice(1);
+        },
+        isSelected(courseId) {
+            return this.selections.some((item) => item.google_course_id === courseId);
+        },
+        toggleCourse(item) {
+            const courseId = item.course.id;
+            if (this.isSelected(courseId)) {
+                this.selections = this.selections.filter((entry) => entry.google_course_id !== courseId);
+                delete this.manualSelections[courseId];
+                return;
+            }
+
+            this.selections.push(this.buildSelection(item));
+        },
+        buildSelection(item) {
+            const courseId = item.course.id;
+            const manual = Boolean(this.manualSelections[courseId]);
+            const offeringId = manual
+                ? this.manualSelections[courseId]
+                : (item.match?.id || '');
+
+            return {
+                google_course_id: courseId,
+                course_name: item.course.name,
+                course_section: item.course.section || '',
+                instructor_name: item.course.instructor_name || '',
+                subject_offering_id: offeringId,
+                match_confidence: manual ? 'manual' : item.confidence,
+                manual,
+            };
+        },
+        enableManual(courseId) {
+            this.manualSelections[courseId] = '';
+            this.refreshSelection(courseId);
+        },
+        setManualOffering(courseId, offeringId) {
+            this.manualSelections[courseId] = offeringId;
+            this.refreshSelection(courseId);
+        },
+        refreshSelection(courseId) {
+            const item = this.matches.find((entry) => entry.course.id === courseId);
+            if (!item) return;
+            this.selections = this.selections.map((entry) =>
+                entry.google_course_id === courseId ? this.buildSelection(item) : entry
+            );
+        },
+        prepareSubmit(event) {
+            if (this.selections.length === 0) {
+                event.preventDefault();
+                return;
+            }
+            this.submitting = true;
         },
     };
 };

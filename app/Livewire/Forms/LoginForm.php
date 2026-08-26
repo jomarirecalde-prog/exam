@@ -33,7 +33,7 @@ class LoginForm extends Form
 
         $user = $this->resolveUser();
 
-        if (! $user || ! Hash::check($this->password, $user->password)) {
+        if (! $user || ! $user->hasPassword() || ! Hash::check($this->password, $user->password)) {
             $this->recordFailedAttempt($user);
             RateLimiter::hit($this->throttleKey());
 

@@ -1,7 +1,12 @@
 <?php
 
+use App\Http\Controllers\AdminGoogleIntegrationController;
 use App\Http\Controllers\AdminStudentRegistrationController;
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GoogleAccountController;
+use App\Http\Controllers\GoogleClassroomController;
+use App\Http\Controllers\GoogleRegistrationController;
 use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\StudentRegistrationController;
 use Illuminate\Support\Facades\Route;
@@ -35,7 +40,17 @@ Route::middleware('guest')->group(function () {
         ->name('student-registration.sections');
     Route::get('/register/student/lookup/subjects', [StudentRegistrationController::class, 'subjects'])
         ->name('student-registration.subjects');
+
+    Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('auth.google');
+
+    Route::get('/register/student/google/complete', [GoogleRegistrationController::class, 'create'])
+        ->name('google-registration.create');
+    Route::post('/register/student/google/complete', [GoogleRegistrationController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('google-registration.store');
 });
+
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
@@ -48,6 +63,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('students.restore');
         Route::delete('/students/deleted/{studentId}/force', [\App\Http\Controllers\StudentController::class, 'forceDestroy'])
             ->name('students.force-destroy');
+
+        Route::get('/admin/google-integration', [AdminGoogleIntegrationController::class, 'edit'])
+            ->name('admin.google-integration.edit');
+        Route::put('/admin/google-integration', [AdminGoogleIntegrationController::class, 'update'])
+            ->name('admin.google-integration.update');
+
         Route::get('/admin/student-registrations', [AdminStudentRegistrationController::class, 'index'])
             ->name('admin.student-registrations.index');
         Route::get('/admin/student-registrations/{student}', [AdminStudentRegistrationController::class, 'show'])
@@ -168,6 +189,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/synchronization', [PlatformController::class, 'sync'])->name('sync.index');
     Route::get('/audit-logs', [PlatformController::class, 'audit'])->name('audit.index');
     Route::get('/settings', [PlatformController::class, 'settings'])->name('settings.index');
+
+    Route::middleware('role:student')->group(function () {
+        Route::get('/google/classroom', [GoogleClassroomController::class, 'index'])->name('google-classroom.index');
+        Route::get('/google/classroom/connect', [GoogleClassroomController::class, 'connect'])->name('google-classroom.connect');
+        Route::get('/google/classroom/callback', [GoogleClassroomController::class, 'callback'])->name('google-classroom.callback');
+        Route::get('/google/classroom/import', [GoogleClassroomController::class, 'import'])->name('google-classroom.import');
+        Route::post('/google/classroom/confirm', [GoogleClassroomController::class, 'confirm'])->name('google-classroom.confirm');
+        Route::post('/google/classroom/disconnect', [GoogleClassroomController::class, 'disconnect'])->name('google-classroom.disconnect');
+        Route::get('/google/classroom/offerings', [GoogleClassroomController::class, 'offerings'])->name('google-classroom.offerings');
+    });
+
+    Route::get('/account/google/connect', [GoogleAccountController::class, 'connect'])->name('account.google.connect');
+    Route::post('/account/google/disconnect', [GoogleAccountController::class, 'disconnect'])->name('account.google.disconnect');
 });
 
 Route::view('profile', 'profile')

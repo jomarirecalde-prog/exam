@@ -1,7 +1,7 @@
 <x-registration-layout>
     <div
         x-data="studentRegistrationWizard(@js([
-            'storeUrl' => route('student-registration.store'),
+            'storeUrl' => $formAction ?? route('student-registration.store'),
             'programsUrl' => route('student-registration.programs'),
             'yearLevelsUrl' => route('student-registration.year-levels'),
             'sectionsUrl' => route('student-registration.sections'),
@@ -9,14 +9,33 @@
             'departments' => $departments,
             'old' => old(),
             'errors' => $errors->messages(),
+            'googleMode' => $googleMode ?? false,
+            'googleProfile' => $googleProfile ?? null,
         ]))"
         class="mt-8"
     >
         <header>
-            <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Create Student Account</h1>
+            <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{{ $pageTitle ?? 'Create Student Account' }}</h1>
             <p class="mt-2 text-sm leading-6 text-muted">
-                Register to access the student portal. Fields marked with <span class="text-danger-ink">*</span> are required.
+                {{ $pageDescription ?? 'Register to access the student portal. Fields marked with * are required.' }}
             </p>
+
+            @if(!empty($googleProfile))
+                <div class="mt-4 rounded-lg border border-success-line bg-success-soft px-4 py-3 text-sm">
+                    <p class="font-medium text-success-ink">Google Account</p>
+                    <p class="mt-1">{{ $googleProfile['email'] ?? '' }}</p>
+                    <p class="mt-1 text-success-ink">✓ Verified</p>
+                </div>
+            @else
+                @php
+                    $googleSettings = app(\App\Services\Google\GoogleIntegrationSettings::class);
+                @endphp
+                @if($googleSettings->isConfigured() && $googleSettings->registrationEnabled())
+                    <div class="mt-6">
+                        @include('components.google-auth-section', ['intent' => 'register', 'label' => 'Continue with Google'])
+                    </div>
+                @endif
+            @endif
         </header>
 
         <nav class="mt-8" aria-label="Registration progress">
@@ -38,7 +57,7 @@
             <p class="mt-3 text-sm font-medium sm:hidden" x-text="steps.find((item) => item.id === step)?.label"></p>
         </nav>
 
-        <form method="post" action="{{ route('student-registration.store') }}" @submit="submit" novalidate class="mt-8 space-y-6">
+        <form method="post" action="{{ $formAction ?? route('student-registration.store') }}" @submit="submit" novalidate class="mt-8 space-y-6">
             @csrf
 
             <template x-for="offeringId in form.subject_offering_ids" :key="'offering-' + offeringId">
@@ -87,7 +106,10 @@
                     </x-ui.field>
 
                     <x-ui.field label="Email Address *" for="email" class="sm:col-span-2">
-                        <input type="email" id="email" name="email" x-model="form.email" class="ui-input" autocomplete="email" required>
+                        <input type="email" id="email" name="email" x-model="form.email" class="ui-input" autocomplete="email" required @if(!empty($googleProfile)) readonly @endif>
+                        @if(!empty($googleProfile))
+                            <p class="ui-help text-success-ink">Verified through Google Sign-In</p>
+                        @endif
                         <p class="ui-error" x-show="errors.email" x-text="errors.email" role="alert"></p>
                     </x-ui.field>
 
@@ -301,10 +323,11 @@
 
                 <div class="ui-card ui-card-pad space-y-5">
                     <h2 class="text-lg font-semibold">Account Security</h2>
+                    <p class="text-sm text-muted" x-show="googleMode">Optional: set a password if you also want to sign in with email and password.</p>
 
-                    <x-ui.field label="Password *" for="password">
+                    <x-ui.field :label="empty($googleProfile) ? 'Password *' : 'Password (optional)'" for="password">
                         <div class="relative">
-                            <input :type="showPassword ? 'text' : 'password'" id="password" name="password" x-model="form.password" class="ui-input pr-10" autocomplete="new-password" required>
+                            <input :type="showPassword ? 'text' : 'password'" id="password" name="password" x-model="form.password" class="ui-input pr-10" autocomplete="new-password" :required="!googleMode">
                             <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
                                 <x-icon name="eye" :size="18" x-show="!showPassword" />
                                 <x-icon name="eye-off" :size="18" x-show="showPassword" x-cloak />
@@ -317,9 +340,9 @@
                         <p class="ui-error" x-show="errors.password" x-text="errors.password" role="alert"></p>
                     </x-ui.field>
 
-                    <x-ui.field label="Confirm Password *" for="password_confirmation">
+                    <x-ui.field :label="empty($googleProfile) ? 'Confirm Password *' : 'Confirm Password (optional)'" for="password_confirmation">
                         <div class="relative">
-                            <input :type="showConfirmPassword ? 'text' : 'password'" id="password_confirmation" name="password_confirmation" x-model="form.password_confirmation" class="ui-input pr-10" autocomplete="new-password" required>
+                            <input :type="showConfirmPassword ? 'text' : 'password'" id="password_confirmation" name="password_confirmation" x-model="form.password_confirmation" class="ui-input pr-10" autocomplete="new-password" :required="!googleMode">
                             <button type="button" class="absolute inset-y-0 right-0 px-3 text-muted hover:text-ink" @click="showConfirmPassword = !showConfirmPassword">
                                 <x-icon name="eye" :size="18" x-show="!showConfirmPassword" />
                                 <x-icon name="eye-off" :size="18" x-show="showConfirmPassword" x-cloak />

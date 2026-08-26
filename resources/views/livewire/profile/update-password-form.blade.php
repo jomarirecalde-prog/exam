@@ -17,11 +17,18 @@ new class extends Component
      */
     public function updatePassword(): void
     {
+        $requiresCurrent = Auth::user()?->hasPassword() ?? true;
+
         try {
-            $validated = $this->validate([
-                'current_password' => ['required', 'string', 'current_password'],
+            $rules = [
                 'password' => ['required', 'string', Password::defaults(), 'confirmed'],
-            ]);
+            ];
+
+            if ($requiresCurrent) {
+                $rules['current_password'] = ['required', 'string', 'current_password'];
+            }
+
+            $validated = $this->validate($rules);
         } catch (ValidationException $e) {
             $this->reset('current_password', 'password', 'password_confirmation');
 
@@ -30,6 +37,7 @@ new class extends Component
 
         Auth::user()->update([
             'password' => Hash::make($validated['password']),
+            'password_login_enabled' => true,
         ]);
 
         $this->reset('current_password', 'password', 'password_confirmation');
@@ -45,19 +53,25 @@ new class extends Component
         </h2>
 
         <p class="mt-1 text-sm text-muted">
-            {{ __('Ensure your account is using a long, random password to stay secure.') }}
+            @if(auth()->user()?->hasPassword())
+                {{ __('Ensure your account is using a long, random password to stay secure.') }}
+            @else
+                {{ __('Set a password if you also want to sign in with email and password.') }}
+            @endif
         </p>
     </header>
 
     <form wire:submit="updatePassword" class="mt-6 space-y-6">
-        <div>
-            <x-input-label for="update_password_current_password" :value="__('Current Password')" />
-            <x-text-input wire:model="current_password" id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full" autocomplete="current-password" />
-            <x-input-error :messages="$errors->get('current_password')" class="mt-2" />
-        </div>
+        @if(auth()->user()?->hasPassword())
+            <div>
+                <x-input-label for="update_password_current_password" :value="__('Current Password')" />
+                <x-text-input wire:model="current_password" id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full" autocomplete="current-password" />
+                <x-input-error :messages="$errors->get('current_password')" class="mt-2" />
+            </div>
+        @endif
 
         <div>
-            <x-input-label for="update_password_password" :value="__('New Password')" />
+            <x-input-label for="update_password_password" :value="auth()->user()?->hasPassword() ? __('New Password') : __('Password')" />
             <x-text-input wire:model="password" id="update_password_password" name="password" type="password" class="mt-1 block w-full" autocomplete="new-password" />
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>

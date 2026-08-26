@@ -89,6 +89,9 @@ class Navigation
             'offline.sync' => [['Sync Status']],
             'audit.index' => [['Audit Logs']],
             'settings.index' => [['Settings']],
+            'admin.google-integration.edit' => [['Settings'], ['Google Integration']],
+            'google-classroom.index' => [['Google Classroom']],
+            'google-classroom.import' => [['Google Classroom', 'google-classroom.index'], ['Import']],
             'examinations.take' => [['Examination']],
             'examinations.result' => [['Results']],
         ];
@@ -105,13 +108,20 @@ class Navigation
         }
 
         if ($user->hasRole('student')) {
-            return [
+            $items = [
                 ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => 'layout-dashboard'],
                 ['label' => 'My Subjects', 'route' => 'student.enrollment.index', 'icon' => 'book-open'],
                 ['label' => 'Examinations', 'route' => 'examinations.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Results', 'route' => 'results.index', 'icon' => 'bar-chart-3'],
-                ['label' => 'Settings', 'route' => 'settings.index', 'icon' => 'settings'],
             ];
+
+            if (app(\App\Services\Google\GoogleIntegrationSettings::class)->classroomEnabled()) {
+                $items[] = ['label' => 'Google Classroom', 'route' => 'google-classroom.index', 'icon' => 'book-open'];
+            }
+
+            $items[] = ['label' => 'Settings', 'route' => 'settings.index', 'icon' => 'settings'];
+
+            return $items;
         }
 
         $groups = [
@@ -188,6 +198,9 @@ class Navigation
                     : null,
                 $user->hasAnyRole(['superadmin', 'admin'])
                     ? ['label' => 'Audit Logs', 'route' => 'audit.index', 'icon' => 'scroll']
+                    : null,
+                $user->hasAnyRole(['superadmin', 'admin'])
+                    ? ['label' => 'Google Integration', 'route' => 'admin.google-integration.edit', 'icon' => 'settings']
                     : null,
                 ['label' => 'Settings', 'route' => 'settings.index', 'icon' => 'settings'],
             ])),

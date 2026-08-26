@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Notifications\NewStudentRegistrationNotification;
 use App\Notifications\StudentRegistrationApprovedNotification;
+use App\Services\Google\LinkedAccountService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -19,6 +20,7 @@ class StudentRegistrationService
     public function __construct(
         protected AcademicLookupService $academic,
         protected StudentSubjectEnrollmentService $subjectEnrollments,
+        protected LinkedAccountService $linkedAccounts,
     ) {
     }
 
@@ -54,6 +56,7 @@ class StudentRegistrationService
                 'suffix' => $suffix,
                 'email' => $data['email'],
                 'password' => $data['password'],
+                'password_login_enabled' => $data['password_login_enabled'] ?? true,
                 'is_active' => false,
             ]);
 
@@ -96,6 +99,40 @@ class StudentRegistrationService
         $this->notifyAdministrators($student);
 
         return $student;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $googleProfile
+     */
+    public function registerWithGoogle(array $data, array $googleProfile): Student
+    {
+        $data['email'] = strtolower(trim($googleProfile['email'] ?? $data['email'] ?? ''));
+
+        $student = $this->register(array_merge($data, [
+            'password' => filled($data['password'] ?? null) ? $data['password'] : Str::password(32),
+            'password_login_enabled' => filled($data['password'] ?? null),
+            'email' => $data['email'],
+        ]));
+
+        $this->linkedAccounts->linkGoogleProfile($student->user, [
+            'provider_account_id' => $googleProfile['provider_account_id'],
+            'email' => $googleProfile['email'],
+            'name' => $googleProfile['name'] ?? $student->user->name,
+            'avatar' => $googleProfile['avatar'] ?? null,
+        ]);
+
+        $student->user->forceFill(['email_verified_at' => now()])->save();
+
+        return $student->fresh([
+            'user.linkedAccounts',
+            'program.department',
+            'yearLevel',
+            'section',
+            'subjectEnrollments.subject',
+            'subjectEnrollments.subjectOffering.instructor.user',
+            'subjectEnrollments.subjectOffering.section',
+        ]);
     }
 
     public function approve(Student $student, User $admin): Student

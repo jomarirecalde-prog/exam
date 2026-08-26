@@ -27,6 +27,8 @@ new #[Layout('layouts.guest')] class extends Component
 
     <x-auth-session-status class="mt-6" :status="session('status')" />
 
+    @include('components.google-auth-section', ['intent' => 'login'])
+
     <form wire:submit="login" class="mt-8 space-y-5">
         <x-ui.field label="Email / Student ID" for="email" :error="$errors->first('form.email')">
             <x-text-input wire:model="form.email" id="email" type="text" name="email" required autofocus autocomplete="username" />

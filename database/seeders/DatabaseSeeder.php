@@ -103,6 +103,11 @@ class DatabaseSeeder extends Seeder
             ['key' => 'default_passing_percentage', 'value' => '75', 'type' => 'float', 'group' => 'examination'],
             ['key' => 'default_duration_minutes', 'value' => '60', 'type' => 'integer', 'group' => 'examination'],
             ['key' => 'subject_verification_required', 'value' => 'true', 'type' => 'boolean', 'group' => 'registration'],
+            ['key' => 'google_sign_in_enabled', 'value' => 'false', 'type' => 'boolean', 'group' => 'google'],
+            ['key' => 'google_registration_enabled', 'value' => 'false', 'type' => 'boolean', 'group' => 'google'],
+            ['key' => 'google_classroom_enabled', 'value' => 'false', 'type' => 'boolean', 'group' => 'google'],
+            ['key' => 'google_require_school_domain', 'value' => 'false', 'type' => 'boolean', 'group' => 'google'],
+            ['key' => 'google_allowed_domain', 'value' => '', 'type' => 'string', 'group' => 'google'],
         ];
 
         foreach ($settings as $setting) {

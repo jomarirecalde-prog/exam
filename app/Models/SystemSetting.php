@@ -24,4 +24,18 @@ class SystemSetting extends Model
             default => $setting->value,
         };
     }
+
+    public static function setValue(string $key, mixed $value, string $type = 'string', string $group = 'general'): self
+    {
+        $stored = match ($type) {
+            'boolean' => $value ? 'true' : 'false',
+            'json' => json_encode($value),
+            default => (string) $value,
+        };
+
+        return static::updateOrCreate(
+            ['key' => $key],
+            ['value' => $stored, 'type' => $type, 'group' => $group],
+        );
+    }
 }

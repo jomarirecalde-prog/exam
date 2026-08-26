@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -24,6 +25,7 @@ class User extends Authenticatable
         'suffix',
         'email',
         'password',
+        'password_login_enabled',
         'is_active',
         'two_factor_enabled',
         'failed_login_attempts',
@@ -44,6 +46,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'password_login_enabled' => 'boolean',
             'is_active' => 'boolean',
             'two_factor_enabled' => 'boolean',
             'locked_until' => 'datetime',
@@ -59,6 +62,31 @@ class User extends Authenticatable
     public function instructor(): HasOne
     {
         return $this->hasOne(Instructor::class);
+    }
+
+    public function linkedAccounts(): HasMany
+    {
+        return $this->hasMany(LinkedAccount::class);
+    }
+
+    public function googleClassroomConnection(): HasOne
+    {
+        return $this->hasOne(GoogleClassroomConnection::class);
+    }
+
+    public function googleClassroomCourseLinks(): HasMany
+    {
+        return $this->hasMany(GoogleClassroomCourseLink::class);
+    }
+
+    public function hasLinkedProvider(string $provider): bool
+    {
+        return $this->linkedAccounts()->where('provider', $provider)->exists();
+    }
+
+    public function hasPassword(): bool
+    {
+        return (bool) ($this->password_login_enabled ?? true);
     }
 
     public function fullName(): string
